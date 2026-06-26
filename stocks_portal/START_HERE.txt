@@ -1,0 +1,65 @@
+==========================================================
+  EQUITYTERM — How to Start (3 options)
+==========================================================
+
+Try them in order. The first one that works for you is the one to keep using.
+
+
+----------------------------------------------------------------
+OPTION 1 — Double-click LAUNCH.cmd  (simplest)
+----------------------------------------------------------------
+  In this folder, double-click the file called:
+      LAUNCH.cmd
+
+  A black window opens, runs Streamlit, and your browser pops up.
+  If it doesn't open, try Option 2.
+
+
+----------------------------------------------------------------
+OPTION 2 — Right-click → Run with PowerShell
+----------------------------------------------------------------
+  Right-click the file:
+      launch.ps1
+  Choose "Run with PowerShell".
+
+  If Windows asks "Do you want to allow this app to make changes",
+  click Yes.
+
+  If you get an "execution policy" error, do this once in a
+  PowerShell window opened as Admin:
+      Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+  Then try again.
+
+
+----------------------------------------------------------------
+OPTION 3 — Manual launch (always works)
+----------------------------------------------------------------
+  Step 1. Open File Explorer.
+
+  Step 2. Navigate INTO the stocks_portal folder.
+
+  Step 3. Click the address bar at the top (where the path is).
+          Delete the path. Type:
+              cmd
+          Press Enter.
+
+  Step 4. A black "cmd" window opens, already inside the folder.
+          Type EXACTLY this and press Enter:
+              streamlit run app.py
+
+          Or, if streamlit isn't found:
+              python -m streamlit run app.py
+
+
+----------------------------------------------------------------
+After it starts (any option):
+----------------------------------------------------------------
+  - Your browser opens automatically at http://localhost:8502
+  - To STOP the app, press Ctrl+C in the black window.
+  - To start again later, run the same launcher again.
+  - Don't close the black window while you're using EquityTerm —
+    that kills the server.
+
+If something errors, take a screenshot of the black window and
+share it with Claude.
+==========================================================

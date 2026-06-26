@@ -1,0 +1,505 @@
+"""
+Optional AI commentary layer.
+
+Pluggable providers (configure ONE, leave others empty):
+  * Anthropic Claude         — paste ANTHROPIC_API_KEY (paid; ~$0.25/1M input tokens for Haiku)
+  * OpenAI                   — paste OPENAI_API_KEY (paid)
+  * Groq                     — paste GROQ_API_KEY (FREE tier: 30 req/min, very fast)
+  * Ollama (local)           — set OLLAMA_HOST=http://localhost:11434, FREE, runs on your machine
+
+If none configured, the data narrator (lib/narrator.py) is used — still useful and instant.
+
+All functions return a string. Errors are caught and produce a fallback message
+so the UI never breaks because the AI is down.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import requests
+import streamlit as st
+
+# Load .env / .env.example regardless of import order. Without this, keys
+# in .env.example don't load if ai_summary is imported before data.py.
+try:
+    from dotenv import load_dotenv
+    base_dir = Path(__file__).parent.parent
+    if (base_dir / ".env.example").exists():
+        load_dotenv(base_dir / ".env.example")
+    if (base_dir / ".env").exists():
+        load_dotenv(base_dir / ".env", override=True)
+except Exception:
+    pass
+
+
+def _clean(raw: str) -> str:
+    s = (raw or "").strip().strip('"').strip("'")
+    if s.lower().startswith("api_key="):
+        s = s.split("=", 1)[1].strip()
+    return s
+
+
+ANTHROPIC_KEY = _clean(os.getenv("ANTHROPIC_API_KEY", ""))
+OPENAI_KEY = _clean(os.getenv("OPENAI_API_KEY", ""))
+GROQ_KEY = _clean(os.getenv("GROQ_API_KEY", ""))
+GEMINI_KEY = _clean(os.getenv("GEMINI_API_KEY", ""))
+OLLAMA_HOST = _clean(os.getenv("OLLAMA_HOST", ""))
+
+
+def detect_provider() -> str | None:
+    """Return the active provider name, in priority order."""
+    if ANTHROPIC_KEY: return "anthropic"
+    if GEMINI_KEY:    return "gemini"
+    if GROQ_KEY:      return "groq"
+    if OPENAI_KEY:    return "openai"
+    if OLLAMA_HOST:   return "ollama"
+    return None
+
+
+SYSTEM_PROMPT = """You are a senior buy-side portfolio strategist at a $5B fund — 20 years on a trading desk through three full cycles. You write tight market interpretations for one principal client (a position trader, 1-6 month hold horizon).
+
+YOUR THINKING METHODOLOGY (use this order, internally):
+1. OBSERVE: Identify the 2-3 most important numbers in the data given.
+2. CONNECT: What pattern do those numbers form together? (regime, divergence, alignment)
+3. CONTEXT: Where does this sit historically? (typical, extreme, rare)
+4. DECIDE: One decisive verdict from the allowed labels.
+5. ACT: One specific action the client should take TODAY.
+6. INVALIDATE: One single signal that would change your mind.
+
+OUTPUT FORMAT (mandatory, exact structure):
+**Verdict:** [exactly ONE: 🟢 BUY / 🟢 RISK-ON / 🟡 WAIT / 🟡 NEUTRAL / 🔴 AVOID / 🔴 RISK-OFF]
+**Why:** [1 sentence. Cite 2-3 specific numbers from the data. No hedging.]
+**Action:** [1 sentence. Concrete, specific, actionable today. No "consider" — say what to do.]
+**Watch for:** [1 sentence. The single signal that would flip your verdict.]
+
+EXAMPLE OF EXCELLENT OUTPUT (study this style):
+**Verdict:** 🟢 RISK-ON
+**Why:** VIX at 14.2 (p38 historically), 10Y-2Y curve at +0.32% (un-inverted Sep 2024), HY OAS at 2.85% (tight) — three of four macro flags green.
+**Action:** Add to Stage 2 names from Discovery scan; leveraged ETFs (TQQQ, SOXL) eligible at full size today.
+**Watch for:** HY OAS widening above 3.5% — earliest crack in the regime.
+
+ANTI-PATTERNS — never do these:
+❌ "Markets could/might/may go..." (be decisive)
+❌ "It depends..." (commit to a verdict)
+❌ "There are risks on both sides..." (pick a side)
+❌ Generic statements without citing the specific numbers given
+❌ Long preambles before the verdict
+❌ Disclaimers about not being financial advice (the page already shows these)
+❌ Suggesting individual securities by name as recommendations
+❌ Output longer than 100 words
+
+REMEMBER: Your client values decisiveness. Hedging is a sign of low conviction. If the data is genuinely mixed, your verdict should be 🟡 WAIT and your "Why" should explain WHAT specifically you are waiting for.
+"""
+
+# Per-page prompt templates — each forces structured reasoning and decisive output
+PROMPT_TEMPLATES = {
+    "today": """Today's market data:
+{ctx}
+
+Read this exactly as you would for a $50M client at the morning meeting. Identify the dominant theme, cite the strongest 2-3 numbers, give the institutional read in the format above. If signals are conflicting, your verdict is 🟡 WAIT and you specify what would resolve the conflict.""",
+
+    "macro": """Current macro state:
+{ctx}
+
+Question: What regime are we in, and what should a position trader do TODAY?
+Reason through: VIX level + percentile, yield curve shape, credit spreads, broad trend. Are 3+ of 4 components aligned? If yes, call it. If split, name 🟡 NEUTRAL and say which signal you're watching to break the tie.""",
+
+    "screen": """Stock screener results:
+{ctx}
+
+Question: What is breadth telling me, and which 2-3 names should the client prioritize TODAY?
+Reason: % of universe in Stage 2 → market health. Top composites + Stage 2 + macro alignment → high-conviction picks. Pick exactly 2-3 names; no more, no less. Justify each in 1 phrase.""",
+
+    "stock": """Stock analysis:
+{ctx}
+
+Question: Is this a buy/wait/avoid right now? Cite the strongest single reason.
+Reason: Stage of underlying → permission to act. Composite score → conviction level. Macro regime → leverage gate. Use the institutional rule: Stage 2 + composite ≥ 50 = STRONG BUY; Stage 4 OR composite ≤ -25 = AVOID.""",
+
+    "valuation": """Valuation analysis:
+{ctx}
+
+Question: Is this stock worth the current price?
+Reason: Compare current price to median fair value. UNDERVALUED + Stage 2 + macro green = strong long. OVERVALUED = trim or avoid as fresh long. Cite the upside % to median and the strongest method estimate.""",
+
+    "smart_money": """Institutional positioning data:
+{ctx}
+
+Question: What theme is smart money playing right now?
+Reason: Aggregate the directional bias (consensus picks, congressional buying, insider buying). Identify the THEME (e.g., "tech accumulation," "defensive rotation," "small-cap distribution"). Tell the client what to do with this signal.""",
+
+    "news": """News headlines today:
+{ctx}
+
+Question: What is the dominant story TODAY and the implication for risk assets?
+Reason: Identify the 1-2 most market-moving headlines (Fed, geopolitics, earnings, macro data). Determine if the story is bullish, bearish, or noise. Translate to a specific action — defensive posture vs offensive vs status quo.""",
+
+    "vix": """VIX historical data:
+{ctx}
+
+Question: Given where VIX is now, how much cash should I deploy and why?
+Reason: Use the VIX percentile + bucket + historical 1Y forward SPY return from this bucket. Higher VIX = higher historical forward returns = deploy more. Cite the specific historical data point. Recommend a deployment % anchored to the historical mean return.""",
+}
+
+
+def _render_briefing_card(st_module, label: str, body: str, accent_color: str = "#FF8C00"):
+    """Render an AI briefing card with a colored accent + provider label."""
+    st_module.markdown(
+        f"<div style='background:#11182A;padding:1.1rem;"
+        f"border-left:5px solid {accent_color};border-radius:6px;margin-bottom:0.6rem'>"
+        f"<div style='color:#8a93a6;font-size:0.72rem;text-transform:uppercase;"
+        f"letter-spacing:0.1rem;margin-bottom:0.3rem'>"
+        f"&#129302; AI BRIEFING &middot; {label}</div>"
+        f"<div style='color:#E6E8EE;line-height:1.55'>{body}</div>"
+        f"<div style='color:#6B7280;font-size:0.7rem;margin-top:0.5rem;"
+        f"font-style:italic'>AI-generated education, not advice. Cached 10 min.</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def auto_summarize(st_module, context: str, page_kind: str = "today",
+                   fallback_text: str = ""):
+    """
+    Auto-generate AI summary at the top of a page. NO button click needed.
+    Cached 10 min. Falls back to deterministic text if no AI key configured.
+
+    If AI_COMPARE_MODE=true and 2+ providers are configured, renders multiple
+    briefings stacked so the user can A/B-compare model output.
+    """
+    prompt = PROMPT_TEMPLATES.get(page_kind, "{ctx}").format(ctx=context)
+
+    # ---- COMPARE MODE: render every active provider ----
+    if COMPARE_MODE:
+        active = all_active_providers()
+        if len(active) >= 2:
+            colors = {"anthropic": "#A855F7", "gemini": "#4285F4",
+                      "groq": "#FF8C00", "openai": "#10B981", "ollama": "#6B7280"}
+            for p in active:
+                out = ask_specific(p, prompt, max_tokens=400)
+                if out:
+                    _render_briefing_card(st_module, provider_label_for(p), out,
+                                           accent_color=colors.get(p, "#FF8C00"))
+            return
+
+    # ---- SINGLE PROVIDER MODE (default) ----
+    if has_ai():
+        out = ask_ai(prompt, max_tokens=400)
+        if out:
+            _render_briefing_card(st_module, provider_label(), out)
+            return
+    if fallback_text:
+        st_module.markdown(
+            f"<div style='background:#11182A;padding:1.1rem;"
+            f"border-left:5px solid #FF8C00;border-radius:6px;margin-bottom:0.8rem'>"
+            f"<div style='color:#8a93a6;font-size:0.72rem;text-transform:uppercase;"
+            f"letter-spacing:0.1rem;margin-bottom:0.3rem'>"
+            f"&#128202; SUMMARY &middot; rule-based  (add an LLM key for richer commentary)</div>"
+            f"<div style='color:#E6E8EE;line-height:1.55'>{fallback_text}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+
+def _ask_with_provider(provider: str, context: str, max_tokens: int = 400) -> str:
+    """Force a specific provider regardless of priority order."""
+    if provider == "anthropic" and ANTHROPIC_KEY:
+        return _ask_anthropic(context, max_tokens)
+    if provider == "gemini" and GEMINI_KEY:
+        return _ask_gemini(context, max_tokens)
+    if provider == "groq" and GROQ_KEY:
+        return _ask_groq(context, max_tokens)
+    if provider == "openai" and OPENAI_KEY:
+        return _ask_openai(context, max_tokens)
+    if provider == "ollama" and OLLAMA_HOST:
+        return _ask_ollama(context, max_tokens)
+    return ""
+
+
+@st.cache_data(ttl=600)
+def ask_specific(provider: str, context: str, max_tokens: int = 400) -> str:
+    """Cached version of _ask_with_provider for compare mode."""
+    try:
+        return _ask_with_provider(provider, context, max_tokens)
+    except Exception as e:
+        return f"_(Provider {provider} unavailable: {e})_"
+
+
+def all_active_providers() -> list[str]:
+    """Return all providers that have keys configured (in priority order)."""
+    out = []
+    if ANTHROPIC_KEY: out.append("anthropic")
+    if GEMINI_KEY:    out.append("gemini")
+    if GROQ_KEY:      out.append("groq")
+    if OPENAI_KEY:    out.append("openai")
+    if OLLAMA_HOST:   out.append("ollama")
+    return out
+
+
+def provider_label_for(provider: str) -> str:
+    if provider == "gemini":
+        model = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+        ground = " + 🔍 live web" if GEMINI_GROUNDING else ""
+        return f"Google Gemini ({model}{ground})"
+    return {"anthropic": "Anthropic Claude (Sonnet)",
+            "groq": "Groq (Llama 3.3 70B - free)",
+            "openai": "OpenAI (GPT-4o-mini)",
+            "ollama": "Ollama (local)"}.get(provider, provider)
+
+
+COMPARE_MODE = os.getenv("AI_COMPARE_MODE", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
+@st.cache_data(ttl=600)  # cache 10 min
+def ask_ai(context: str, max_tokens: int = 500) -> str:
+    """
+    Send the data context to the configured LLM, return the narrative.
+    Cached so the same context doesn't get sent twice.
+    """
+    provider = detect_provider()
+    if provider is None:
+        return ""
+
+    try:
+        if provider == "anthropic":
+            return _ask_anthropic(context, max_tokens)
+        if provider == "gemini":
+            return _ask_gemini(context, max_tokens)
+        if provider == "groq":
+            return _ask_groq(context, max_tokens)
+        if provider == "openai":
+            return _ask_openai(context, max_tokens)
+        if provider == "ollama":
+            return _ask_ollama(context, max_tokens)
+    except Exception as e:
+        return f"_(AI commentary unavailable: {e})_"
+    return ""
+
+
+# ----- Anthropic -----
+def _ask_anthropic(context: str, max_tokens: int) -> str:
+    r = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": ANTHROPIC_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": "claude-haiku-4-5",
+            "max_tokens": max_tokens,
+            "system": SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": context}],
+        },
+        timeout=20,
+    )
+    r.raise_for_status()
+    data = r.json()
+    return data["content"][0]["text"]
+
+
+# ----- Groq (free, fast, OpenAI-compatible) -----
+def _ask_groq(context: str, max_tokens: int) -> str:
+    r = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {GROQ_KEY}",
+                 "Content-Type": "application/json"},
+        json={
+            "model": "llama-3.3-70b-versatile",  # free, capable
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": context},
+            ],
+        },
+        timeout=20,
+    )
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
+
+
+# ----- OpenAI -----
+def _ask_openai(context: str, max_tokens: int) -> str:
+    r = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {OPENAI_KEY}",
+                 "Content-Type": "application/json"},
+        json={
+            "model": "gpt-4o-mini",
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": context},
+            ],
+        },
+        timeout=20,
+    )
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
+
+
+# ----- Gemini (Google AI Studio — FREE tier, very capable) -----
+GEMINI_GROUNDING = os.getenv("GEMINI_GROUNDING", "false").strip().lower() in ("true", "1", "yes", "on")
+
+
+def _gemini_call(model: str, context: str, max_tokens: int, grounding: bool) -> requests.Response:
+    """One Gemini API call. Returns raw response so caller can inspect status."""
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [{"text": context}]}],
+        "generationConfig": {
+            "maxOutputTokens": max_tokens,
+            "temperature": 0.4,
+            "topP": 0.95,
+        },
+    }
+    # Google Search grounding — Gemini fetches fresh web results during inference.
+    # This is the closest free analog to Google Search "AI Mode".
+    if grounding:
+        payload["tools"] = [{"google_search": {}}]
+
+    return requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+        json=payload,
+        timeout=45,  # grounded calls take longer
+    )
+
+
+def _ask_gemini(context: str, max_tokens: int) -> str:
+    """
+    Google AI Studio Gemini API. Free tier limits:
+      - gemini-2.5-pro:   50 req/day, 5/min  (best quality, default)
+      - gemini-2.5-flash: 250 req/day, 10/min (auto-fallback on Pro quota)
+      - gemini-2.0-flash: 1500 req/day (basic but reliable)
+    Set GEMINI_MODEL env var to override default.
+    Set GEMINI_GROUNDING=true to enable Google Search grounding (live web data).
+    """
+    primary = (os.getenv("GEMINI_MODEL", "gemini-2.5-pro").strip()
+               or "gemini-2.5-pro")
+    fallback = "gemini-2.5-flash" if primary != "gemini-2.5-flash" else "gemini-2.0-flash"
+
+    # Try primary model first
+    r = _gemini_call(primary, context, max_tokens, GEMINI_GROUNDING)
+
+    # Auto-fallback on 429 (quota / rate limit) or 503 (overloaded)
+    if r.status_code in (429, 503):
+        r = _gemini_call(fallback, context, max_tokens, GEMINI_GROUNDING)
+
+    # If grounding fails (some accounts can't use it), retry without grounding
+    if r.status_code == 400 and GEMINI_GROUNDING:
+        r = _gemini_call(primary, context, max_tokens, grounding=False)
+
+    if not r.ok:
+        return f"_(Gemini error {r.status_code}: {r.text[:200]})_"
+
+    j = r.json()
+    try:
+        cand = j["candidates"][0]
+        text = cand["content"]["parts"][0]["text"]
+    except (KeyError, IndexError):
+        return f"_(Gemini returned no content: {str(j)[:200]})_"
+
+    # Extract grounding citations if present (links Gemini consulted)
+    sources = []
+    try:
+        chunks = cand.get("groundingMetadata", {}).get("groundingChunks", [])
+        for ch in chunks[:5]:  # top 5 sources
+            web = ch.get("web", {})
+            title = (web.get("title") or "")[:60]
+            uri = web.get("uri")
+            if uri:
+                sources.append(f"<a href='{uri}' target='_blank' "
+                               f"style='color:#4285F4;text-decoration:none'>{title or uri}</a>")
+    except Exception:
+        pass
+
+    if sources:
+        text += ("<div style='margin-top:0.6rem;font-size:0.7rem;color:#8a93a6'>"
+                 "<b>Live sources Gemini consulted:</b> " + " · ".join(sources) +
+                 "</div>")
+    return text
+
+
+# ----- Ollama (local, free) -----
+def _ask_ollama(context: str, max_tokens: int) -> str:
+    r = requests.post(
+        f"{OLLAMA_HOST.rstrip('/')}/api/chat",
+        json={
+            "model": os.getenv("OLLAMA_MODEL", "llama3.2"),
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": context},
+            ],
+        },
+        timeout=60,  # local can be slow on CPU
+    )
+    r.raise_for_status()
+    return r.json()["message"]["content"]
+
+
+# ----- Convenience: build a sector-context string for the LLM -----
+
+
+# ----- Convenience helpers -----
+def build_sector_context(today_df, month_df, regime: str, growth_1m: float,
+                         defensive_1m: float, cyclical_1m: float) -> str:
+    """Build a concise context block to pass to the LLM."""
+    today_top = today_df.head(3) if today_df is not None and len(today_df) else None
+    today_bot = today_df.tail(3) if today_df is not None and len(today_df) else None
+    month_top = month_df.head(3) if month_df is not None and len(month_df) else None
+    month_bot = month_df.tail(3) if month_df is not None and len(month_df) else None
+
+    today_col = "Change %" if today_df is not None and "Change %" in today_df.columns else None
+    month_col = "1M %" if month_df is not None and "1M %" in month_df.columns else None
+
+    parts = [
+        f"Current sector regime: {regime}",
+        f"Past-month group averages: Growth {growth_1m:+.1f}%, "
+        f"Defensives {defensive_1m:+.1f}%, Cyclicals {cyclical_1m:+.1f}%",
+    ]
+    if today_top is not None and today_col:
+        parts.append("TODAY's leaders: " +
+                     ", ".join(f"{r['Sector']} {r[today_col]:+.2f}%" for _, r in today_top.iterrows()))
+    if today_bot is not None and today_col:
+        parts.append("TODAY's laggards: " +
+                     ", ".join(f"{r['Sector']} {r[today_col]:+.2f}%" for _, r in today_bot.iterrows()))
+    if month_top is not None and month_col:
+        parts.append("PAST-MONTH leaders: " +
+                     ", ".join(f"{r['Sector']} {r[month_col]:+.1f}%" for _, r in month_top.iterrows()))
+    if month_bot is not None and month_col:
+        parts.append("PAST-MONTH laggards: " +
+                     ", ".join(f"{r['Sector']} {r[month_col]:+.1f}%" for _, r in month_bot.iterrows()))
+    return "\n".join(parts)
+
+
+def has_ai() -> bool:
+    return detect_provider() is not None
+
+
+def provider_label() -> str:
+    p = detect_provider()
+    if p == "gemini":
+        model = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+        return f"Google Gemini ({model} - free tier)"
+    return {"anthropic": "Anthropic Claude (Sonnet)",
+            "groq": "Groq (Llama 3.3 70B - free tier)",
+            "openai": "OpenAI (GPT-4o-mini)",
+            "ollama": "Ollama (local)"}.get(p, "")
+
+
+def render_ai_button(st_module, context: str, key: str,
+                     label: str = "Ask AI for commentary"):
+    """Backward-compat: button-gated AI call. Most pages use auto_summarize() now."""
+    if has_ai():
+        with st_module.expander(f"{label}  ({provider_label()})", expanded=False):
+            if st_module.button("Generate AI commentary", key=f"ai_btn_{key}"):
+                with st_module.spinner("Generating..."):
+                    out = ask_ai(context, max_tokens=400)
+                    if out:
+                        st_module.markdown(out)
+                        st_module.caption("AI-generated, education only.")
+                    else:
