@@ -1,0 +1,1683 @@
+From 613bb2561bf17ad98bf38857d267d4f1dbaa25fb Mon Sep 17 00:00:00 2001
+From: pulsefi <b@b>
+Date: Fri, 4 Sep 2026 18:30:25 +0000
+Subject: [PATCH] Crypto Cycle agents + Funnel + daily refresh workflow
+
+---
+ .github/workflows/crypto_refresh.yml    |  23 ++
+ stocks_portal/.cache/.gitkeep           |   0
+ stocks_portal/PULSEFI_UPDATE_README.md  | 105 ++++++
+ stocks_portal/app.py                    |   2 +
+ stocks_portal/lib/crypto_agents.py      | 378 ++++++++++++++++++++
+ stocks_portal/lib/crypto_cycle.py       | 443 ++++++++++++++++++++++++
+ stocks_portal/lib/funnel.py             | 246 +++++++++++++
+ stocks_portal/requirements.txt          |   2 +-
+ stocks_portal/scripts/refresh_crypto.py |  25 ++
+ stocks_portal/views/crypto.py           | 219 ++++++++++++
+ stocks_portal/views/funnel.py           | 139 ++++++++
+ 11 files changed, 1581 insertions(+), 1 deletion(-)
+ create mode 100644 .github/workflows/crypto_refresh.yml
+ create mode 100644 stocks_portal/.cache/.gitkeep
+ create mode 100644 stocks_portal/PULSEFI_UPDATE_README.md
+ create mode 100644 stocks_portal/lib/crypto_agents.py
+ create mode 100644 stocks_portal/lib/crypto_cycle.py
+ create mode 100644 stocks_portal/lib/funnel.py
+ create mode 100644 stocks_portal/scripts/refresh_crypto.py
+ create mode 100644 stocks_portal/views/crypto.py
+ create mode 100644 stocks_portal/views/funnel.py
+
+diff --git a/.github/workflows/crypto_refresh.yml b/.github/workflows/crypto_refresh.yml
+new file mode 100644
+index 0000000..e0e5d92
+--- /dev/null
++++ b/.github/workflows/crypto_refresh.yml
+@@ -0,0 +1,23 @@
++name: crypto-refresh
++on:
++  schedule:
++    - cron: "15 13 * * *"     # 13:15 UTC daily (after Coin Metrics' morning update)
++  workflow_dispatch:
++jobs:
++  refresh:
++    runs-on: ubuntu-latest
++    permissions: { contents: write }
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with: { python-version: "3.11" }
++      - run: pip install -r stocks_portal/requirements.txt
++      - run: cd stocks_portal && python scripts/refresh_crypto.py
++        env:
++          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
++          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
++      - name: Commit snapshot
++        run: |
++          git config user.name "pulsefi-bot" && git config user.email "bot@users.noreply.github.com"
++          git add stocks_portal/.cache/crypto_state.json stocks_portal/.cache/crypto_state_history.jsonl stocks_portal/.cache/last_refresh.json
++          git diff --cached --quiet || git commit -m "crypto snapshot $(date -u +%F)" && git push
+diff --git a/stocks_portal/.cache/.gitkeep b/stocks_portal/.cache/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/stocks_portal/PULSEFI_UPDATE_README.md b/stocks_portal/PULSEFI_UPDATE_README.md
+new file mode 100644
+index 0000000..bade013
+--- /dev/null
++++ b/stocks_portal/PULSEFI_UPDATE_README.md
+@@ -0,0 +1,105 @@
++# PulseFi update — Crypto Cycle + Funnel (Sep 2026)
++
++## 1. Files (drop into `stocks_portal/`)
++
++| file | what |
++|---|---|
++| `lib/crypto_cycle.py` | BTC/ETH engine: Coin Metrics history (+ CoinGecko extension), live price, all signals, structure S/R, **evidence recomputed in-app** |
++| `lib/crypto_agents.py` | **Agent layer** run on page launch: halving projection from block height, Fear&Greed + funding, tagged crypto news, FOMC/CPI/expiry calendar, ETF flows (best-effort), adaptive recalibration, state snapshot + change detection, LLM analyst + auditor |
++| `views/crypto.py` | Crypto Cycle page — built on the agent pipeline; live header auto-refreshes every 60 s |
++| `scripts/refresh_crypto.py` + `.github/workflows/crypto_refresh.yml` | Daily headless refresh (GitHub Actions cron, free) that commits the snapshot so history accrues without visits |
++| `lib/funnel.py` | Pond → Fish → Focus → Review engine, gates with literature citations, correlation kill, sizing |
++| `views/funnel.py` | Funnel page (5 tabs) |
++
++## 2. `app.py` — add two NAV lines
++
++```python
++st.Page("views/crypto.py", title="Crypto Cycle", icon="₿"),
++st.Page("views/funnel.py", title="Funnel",       icon="🎣"),
++```
++
++## 3. `requirements.txt` — bump Streamlit (needed for `st.fragment(run_every=...)`)
++
++```
++streamlit>=1.40
++```
++
++No new packages otherwise (requests, pandas, numpy, plotly already present).
++Create `.cache/` (already used by universe.py) — plan and theses persist there.
++On Streamlit Cloud that folder resets on redeploy; for durable storage move the two
++JSON files to `st.secrets`-backed GitHub Gist or a free Supabase table (5 lines of code).
++
++## 3b. How the page stays alive (agents)
++
++On every launch (cached 15 min, "Force refresh" button clears it) `crypto_agents.run_pipeline()`:
++
++1. **halving_agent** — reads the live block height (mempool.space → blockchain.info), projects the
++   next halving from the observed block interval, and feeds it into the 500-day dates. The static
++   2028-03-25 assumption is only a fallback; the card shows the drift in days.
++2. **recalibrate** — derives the euphoria threshold from the declining peak-MVRV series
++   (5.06 → 4.25 → 2.72 → 2.22; next expected ≈ 1.7) → threshold = max(2.0, 0.85 × last peak).
++   `EUPHORIA` is only labelled inside the post-halving peak window; outside it the same reading is `ELEVATED`.
++3. **sentiment_agent / etf_agent / calendar_agent / news_agent** — positioning, flows, dated catalysts,
++   and 48h headlines tagged MACRO / ETF-FLOWS / REGULATION / LIQUIDATION / ON-CHAIN / SECURITY.
++4. **snapshot** — writes `.cache/crypto_state.json` + appends `crypto_state_history.jsonl`; the page opens
++   with **"Changed since last visit"** (signal flips, >5% price moves, new ATH → clock reset).
++5. **analyst_agent → auditor_agent** (LLM, optional) — the analyst writes a 4-section note from numbers
++   only; the auditor is a second model call that must trace every claim back to the context and prints
++   `AUDIT PASS` or the unsupported claims. Generator + verifier is the cheapest way to make LLM notes
++   trustworthy; the raw context is shown in an expander so you can check both.
++
++Every agent fails quietly and labels its source. A missing card means a source was unreachable.
++
++**Streamlit Cloud has no cron**, so the GitHub Actions workflow runs the same pipeline daily at 13:15 UTC
++(free tier is plenty) and commits the snapshot files; Streamlit redeploys on push, so the app opens
++already refreshed and the history chart builds day by day. Add `GROQ_API_KEY`/`GEMINI_API_KEY` as repo
++secrets if you want the LLM notes in the cron run too.
++
++## 4. Real-time data — what's actually free, and the trade-offs
++
++| need | source | cost | limits / notes |
++|---|---|---|---|
++| Crypto live price | **CoinGecko** `simple/price` | free, no key | ~30 req/min; used here with 60 s cache |
++| Crypto history + on-chain (MVRV, realized cap) | **Coin Metrics Community** CSV on GitHub | free, no key | daily, can lag days–weeks; we extend price with CoinGecko `market_chart` |
++| Crypto tick/websocket | Coinbase / Binance public WS | free | Streamlit can't hold a socket; poll instead (below) |
++| Stock quotes (delayed-free) | yfinance (unofficial) | free | rate-limits on Cloud; keep Stooq fallback |
++| Stock quotes, real-time, websocket | **Finnhub** free tier | free key | 60 req/min, US stocks real-time trades; already wired in `lib/data.py` |
++| Fundamentals / estimates / revisions | **FMP** free tier | free key | 250 req/day — enough for the Funnel's survivors only (that's why F1 caps lookups) |
++| Cheap upgrade if you outgrow free | Polygon Starter (~$29/mo) or FMP Starter (~$22/mo) | paid | unlimited-ish, official, reliable on Cloud |
++
++**The "live pointers" trick without websockets:** Streamlit ≥1.37 `@st.fragment(run_every="60s")`
++re-runs only that block on a timer (used in `views/crypto.py` for the header). Set 15–30 s on
++stock pages if Finnhub key is present; don't go below 10 s on free tiers.
++
++## 5. AI summaries — free/cheap
++
++Already supported by `lib/ai_summary.py`; set ONE key in Streamlit Secrets:
++
++- **Groq** (Llama 3.3 70B) — free tier, fast, fine for briefings. Best zero-cost pick.
++- **Gemini 2.5 Flash** — free tier, larger context; set `GEMINI_MODEL=gemini-2.5-flash`.
++- **Anthropic Claude Haiku** — pennies per briefing, best instruction-following; `ANTHROPIC_API_KEY`.
++- **Ollama** — free/local, only if you self-host (not on Streamlit Cloud).
++
++The Crypto and Funnel pages pass numbers-only context and force the model to cite them; if you
++see a briefing that invents a figure not on the page, that's the model — switch provider.
++
++## 6. Methodology changes vs. the chat (evidence-driven corrections)
++
++1. **Sell-side MVRV fixed.** In-app backtest: MVRV > 3 alone was a *bad* exit (67% of those days
++   were higher a year later) and peak MVRV fell 5.1 → 4.3 → 2.7 → 2.2 across cycles, so a fixed 3.0
++   never fired in 2021 or 2025. Sell signal is now: post-halving peak window (primary, 1y fwd median
++   −48%, 19% positive) + MVRV > **2.5 inside** the window (−58%). Update the Pine indicator's
++   "Euphoria level" input to 2.5 accordingly, and treat the peak window as the primary exit.
++2. **Sample sizes shown as episodes, not days.** Every stat carries an episode count (20–27 for
++   the buy signals, 3–4 for the cycle timing) so the UI can't overstate confidence.
++3. **Baseline row.** Every evidence table includes "ANY day" so you can see how much of a signal's
++   record is just Bitcoin's drift (~75% of days positive 1y forward).
++4. **Naming.** "Stage 1–4" stays Weinstein (price structure). The selection pipeline is
++   "Funnel F1–F4" to avoid the collision.
++5. **Halving clock applied to ETH** on the BTC schedule (its 2017/2021 peaks landed inside
++   BTC's window) and labeled as such; ETH gets no 500-day rule of its own.
++6. **Funnel gates cite literature, not memory** — and the README says plainly the app doesn't
++   yet re-derive factor premia itself. That factor backtest on the app's own universe is the
++   next honest step if you want the Funnel to match the Crypto page's standard.
++
++Not financial advice. 3–4 crypto cycles and ~30 years of factor data are tilted odds, not rules.
+diff --git a/stocks_portal/app.py b/stocks_portal/app.py
+index 7e53457..8aa68bc 100644
+--- a/stocks_portal/app.py
++++ b/stocks_portal/app.py
+@@ -30,6 +30,8 @@ NAV = {
+     "EquityTerm": [
+         st.Page("views/today.py",       title="Today",         icon="🎯", default=True),
+         st.Page("views/macro.py",       title="Macro",         icon="🌍"),
++        st.Page("views/crypto.py",      title="Crypto Cycle",  icon="₿"),
++        st.Page("views/funnel.py",      title="Funnel",        icon="🎣"),
+         st.Page("views/discovery.py",   title="Discovery",     icon="🔍"),
+         st.Page("views/canslim.py",     title="CAN SLIM",      icon="🏆"),
+         st.Page("views/valuation.py",   title="Valuation",     icon="💎"),
+diff --git a/stocks_portal/lib/crypto_agents.py b/stocks_portal/lib/crypto_agents.py
+new file mode 100644
+index 0000000..a0ab4e4
+--- /dev/null
++++ b/stocks_portal/lib/crypto_agents.py
+@@ -0,0 +1,378 @@
++"""
++lib/crypto_agents.py — the "living framework" layer for the Crypto Cycle page.
++
++Runs on page launch (cached, TTL 15 min) and optionally on a daily GitHub
++Actions cron (scripts/refresh_crypto.py) so the app opens with fresh state
++and builds a history of snapshots.
++
++AGENTS (deterministic unless marked LLM):
++  1. halving_agent     block height → projected next halving date (mempool.space / blockchain.info)
++  2. sentiment_agent   Fear & Greed (alternative.me) + perp funding (Binance → OKX fallback)
++  3. news_agent        crypto RSS via feedparser, tagged by catalyst type, deduped
++  4. calendar_agent    FOMC (published schedule) + CPI (BLS page, best-effort) → next events
++  5. etf_agent         US spot-ETF daily flows (Farside HTML, best-effort; fails quietly)
++  6. recalibrate       adaptive euphoria threshold from the declining peak-MVRV series
++  7. snapshot/diff     persist today's state; "what changed since last visit"
++  8. analyst (LLM)     numbers + tagged headlines → structured read
++  9. auditor (LLM)     second model pass: every claim must cite a number present in context;
++                       unsupported claims are flagged. Generator + verifier pattern.
++
++Every agent returns a dict with an 'ok' flag and 'source'. Nothing raises.
++"""
++
++from __future__ import annotations
++
++import json
++import re
++from datetime import datetime, timedelta, timezone
++from pathlib import Path
++
++import feedparser
++import numpy as np
++import pandas as pd
++import requests
++import streamlit as st
++
++from . import ai_summary, crypto_cycle as cc
++
++STATE_DIR = Path(__file__).parent.parent / ".cache"
++STATE_FILE = STATE_DIR / "crypto_state.json"
++HIST_FILE = STATE_DIR / "crypto_state_history.jsonl"
++UA = {"User-Agent": "Mozilla/5.0 (PulseFi research bot)"}
++
++# Published FOMC meeting dates (second day = decision). Extend when the Fed
++# publishes the next year's calendar (usually each summer).
++FOMC = ["2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17", "2026-07-29",
++        "2026-09-16", "2026-10-28", "2026-12-09"]
++
++CRYPTO_RSS = [
++    ("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
++    ("Cointelegraph", "https://cointelegraph.com/rss"),
++    ("Bitcoin Magazine", "https://bitcoinmagazine.com/feed"),
++    ("The Block", "https://www.theblock.co/rss.xml"),
++    ("Decrypt", "https://decrypt.co/feed"),
++]
++
++CATALYST_TAGS = {
++    "MACRO": ["fomc", "fed ", "federal reserve", "rate cut", "rate hike", "powell", "waller", "cpi", "inflation", "treasury", "yields", "tariff"],
++    "ETF/FLOWS": ["etf", "inflow", "outflow", "blackrock", "ibit", "fidelity", "grayscale", "strategy buys", "microstrategy", "saylor", "treasury company"],
++    "REGULATION": ["sec", "clarity act", "senate", "congress", "regulation", "cftc", "stablecoin bill", "genius act", "lawsuit"],
++    "LIQUIDATION/LEVERAGE": ["liquidat", "leverage", "open interest", "funding rate", "short squeeze", "long squeeze"],
++    "ON-CHAIN": ["mvrv", "realized", "whale", "exchange reserve", "miner", "hashrate", "halving"],
++    "SECURITY/RISK": ["hack", "exploit", "bankrupt", "insolven", "ftx", "fraud"],
++}
++
++
++def _ok(**kw):
++    return {"ok": True, "ts": datetime.now(timezone.utc).isoformat(), **kw}
++
++
++def _fail(source, err=""):
++    return {"ok": False, "source": source, "error": str(err)[:120]}
++
++
++# ============================================================
++# 1. Halving projection from block height
++# ============================================================
++@st.cache_data(ttl=3600, show_spinner=False)
++def halving_agent() -> dict:
++    height = None; src = None
++    for url, key in (("https://mempool.space/api/blocks/tip/height", None),
++                     ("https://blockchain.info/q/getblockcount", None)):
++        try:
++            r = requests.get(url, timeout=8, headers=UA); r.raise_for_status()
++            height = int(r.text.strip()); src = url.split("/")[2]; break
++        except Exception:
++            continue
++    if height is None:
++        return _fail("block height", "all sources failed")
++    next_h_block = ((height // 210_000) + 1) * 210_000
++    remaining = next_h_block - height
++    # observed block interval: last 2016 blocks (~2 weeks) via mempool difficulty-adjustment endpoint
++    interval_min = 10.0
++    try:
++        r = requests.get("https://mempool.space/api/v1/difficulty-adjustment", timeout=8, headers=UA)
++        j = r.json(); interval_min = float(j.get("timeAvg", 600_000)) / 60_000
++    except Exception:
++        pass
++    eta = datetime.utcnow() + timedelta(minutes=remaining * interval_min)
++    return _ok(source=src, height=height, next_halving_block=next_h_block, blocks_remaining=remaining,
++               avg_block_min=round(interval_min, 2), projected_date=eta.date().isoformat(),
++               drift_vs_static_days=(eta - cc.NEXT_HALVING_PROJECTED).days)
++
++
++# ============================================================
++# 2. Sentiment / positioning
++# ============================================================
++@st.cache_data(ttl=1800, show_spinner=False)
++def sentiment_agent() -> dict:
++    out = {}
++    try:
++        j = requests.get("https://api.alternative.me/fng/?limit=8", timeout=8, headers=UA).json()["data"]
++        out["fear_greed"] = int(j[0]["value"]); out["fear_greed_label"] = j[0]["value_classification"]
++        out["fear_greed_7d_ago"] = int(j[-1]["value"])
++    except Exception as e:
++        out["fear_greed_error"] = str(e)[:80]
++    # funding: Binance perp → OKX fallback (Binance is geo-blocked in some regions incl. some US hosts)
++    fund = None; fsrc = None
++    try:
++        j = requests.get("https://fapi.binance.com/fapi/v1/premiumIndex", params={"symbol": "BTCUSDT"}, timeout=8, headers=UA).json()
++        fund = float(j["lastFundingRate"]) * 100; fsrc = "Binance"
++    except Exception:
++        try:
++            j = requests.get("https://www.okx.com/api/v5/public/funding-rate", params={"instId": "BTC-USDT-SWAP"}, timeout=8, headers=UA).json()
++            fund = float(j["data"][0]["fundingRate"]) * 100; fsrc = "OKX"
++        except Exception:
++            pass
++    if fund is not None:
++        out["funding_8h_pct"] = round(fund, 4); out["funding_annualized_pct"] = round(fund * 3 * 365, 1); out["funding_source"] = fsrc
++        out["funding_read"] = ("crowded longs" if fund > 0.03 else "crowded shorts" if fund < -0.01 else "neutral")
++    return _ok(source="alternative.me / " + (fsrc or "no funding"), **out)
++
++
++# ============================================================
++# 3. News, tagged by catalyst
++# ============================================================
++def _tag(title: str) -> list[str]:
++    t = title.lower()
++    return [k for k, words in CATALYST_TAGS.items() if any(w in t for w in words)]
++
++
++@st.cache_data(ttl=900, show_spinner=False)
++def news_agent(max_items: int = 40, hours: int = 48) -> pd.DataFrame:
++    rows = []; cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
++    for src, url in CRYPTO_RSS:
++        try:
++            feed = feedparser.parse(url)
++            for e in feed.entries[:25]:
++                ts = None
++                for k in ("published_parsed", "updated_parsed"):
++                    if getattr(e, k, None):
++                        ts = datetime(*getattr(e, k)[:6], tzinfo=timezone.utc); break
++                if ts and ts < cutoff:
++                    continue
++                title = re.sub(r"\s+", " ", e.get("title", "")).strip()
++                rows.append({"time": ts, "source": src, "title": title, "link": e.get("link", ""), "tags": ", ".join(_tag(title))})
++        except Exception:
++            continue
++    if not rows:
++        return pd.DataFrame(columns=["time", "source", "title", "link", "tags"])
++    df = pd.DataFrame(rows).drop_duplicates("title").sort_values("time", ascending=False)
++    # catalyst-tagged first
++    df["has_tag"] = df["tags"].str.len() > 0
++    return df.sort_values(["has_tag", "time"], ascending=[False, False]).drop(columns="has_tag").head(max_items).reset_index(drop=True)
++
++
++# ============================================================
++# 4. Macro calendar
++# ============================================================
++@st.cache_data(ttl=6 * 3600, show_spinner=False)
++def calendar_agent(days_ahead: int = 21) -> dict:
++    today = datetime.utcnow().date()
++    events = [{"date": d, "event": "FOMC decision", "kind": "MACRO"} for d in FOMC]
++    # CPI: BLS schedule page, best effort
++    try:
++        html = requests.get("https://www.bls.gov/schedule/news_release/cpi.htm", timeout=10, headers=UA).text
++        for m in re.finditer(r"([A-Z][a-z]+\.? \d{1,2}, \d{4})", html):
++            try:
++                d = datetime.strptime(m.group(1).replace(".", ""), "%B %d, %Y").date()
++            except ValueError:
++                try:
++                    d = datetime.strptime(m.group(1).replace(".", ""), "%b %d, %Y").date()
++                except ValueError:
++                    continue
++            if today <= d <= today + timedelta(days=120):
++                events.append({"date": d.isoformat(), "event": "CPI release", "kind": "MACRO"})
++        cpi_src = "bls.gov"
++    except Exception:
++        cpi_src = "unavailable"
++    # quarterly futures/options expiry: last Friday of Mar/Jun/Sep/Dec
++    for m in (3, 6, 9, 12):
++        for y in (today.year, today.year + 1):
++            d = datetime(y, m, 1) + pd.offsets.MonthEnd(0)
++            d = d - pd.Timedelta(days=(d.weekday() - 4) % 7)
++            events.append({"date": d.date().isoformat(), "event": "Quarterly expiry", "kind": "LEVERAGE"})
++    ev = pd.DataFrame(events).drop_duplicates()
++    ev["date"] = pd.to_datetime(ev["date"]).dt.date
++    upcoming = ev[(ev["date"] >= today) & (ev["date"] <= today + timedelta(days=days_ahead))].sort_values("date")
++    upcoming["days"] = [(d - today).days for d in upcoming["date"]]
++    return _ok(source=f"FOMC static list / CPI {cpi_src}", upcoming=upcoming.reset_index(drop=True))
++
++
++# ============================================================
++# 5. ETF flows (best effort)
++# ============================================================
++@st.cache_data(ttl=3600, show_spinner=False)
++def etf_agent() -> dict:
++    try:
++        html = requests.get("https://farside.co.uk/btc/", timeout=12, headers=UA).text
++        tables = pd.read_html(html)
++        t = max(tables, key=len)
++        t.columns = [str(c).strip() for c in t.columns]
++        total_col = next((c for c in t.columns if "total" in c.lower()), t.columns[-1])
++        t = t[~t.iloc[:, 0].astype(str).str.contains("Total|Average|Maximum|Minimum", na=False)]
++        vals = pd.to_numeric(t[total_col].astype(str).str.replace(r"[(),$]", "", regex=True).str.replace("−", "-"), errors="coerce").dropna()
++        last5 = vals.tail(5)
++        return _ok(source="farside.co.uk", last_day_musd=float(last5.iloc[-1]), last5_sum_musd=float(last5.sum()),
++                   last5=[float(x) for x in last5], read=("inflows" if last5.sum() > 0 else "outflows"))
++    except Exception as e:
++        return _fail("farside.co.uk", e)
++
++
++# ============================================================
++# 6. Recalibration from data
++# ============================================================
++def recalibrate(df: pd.DataFrame) -> dict:
++    """Adaptive parameters derived from the data, replacing fixed constants."""
++    out = {}
++    if df is None or df.empty or df["mvrv"].isna().all():
++        return out
++    m = df["mvrv"]
++    peaks = [pk for pk in cc.CYCLE_PEAKS_BTC if pk in m.index and not np.isnan(m[pk])]
++    if len(peaks) >= 2:
++        pk_mvrv = [float(m[pk]) for pk in peaks]
++        # each peak's MVRV as a ratio of the previous (5.06→4.25→2.72→2.22 ≈ 0.84, 0.64, 0.82)
++        ratios = [pk_mvrv[i] / pk_mvrv[i - 1] for i in range(1, len(pk_mvrv))]
++        nxt = pk_mvrv[-1] * float(np.mean(ratios))
++        out["peak_mvrv_series"] = [round(v, 2) for v in pk_mvrv]
++        out["expected_next_peak_mvrv"] = round(nxt, 2)
++        # threshold: 85% of the LAST peak, floored at 2.0 so it can't fire mid-cycle.
++        # Only meaningful INSIDE the post-halving peak window (compute_signals enforces this).
++        out["euphoria_threshold_adaptive"] = round(max(2.0, 0.85 * pk_mvrv[-1]), 2)
++        out["note"] = ("MVRV is losing discriminating power as peaks compress; the post-halving peak window is the primary "
++                       "exit signal, MVRV above threshold inside it is confirmation.")
++    # trough stats for the clock window
++    return out
++
++
++# ============================================================
++# 7. Snapshot + diff
++# ============================================================
++def _state_from(sig: cc.Signals, extras: dict) -> dict:
++    d = {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in sig.__dict__.items() if k != "notes"}
++    d["extras"] = extras
++    d["saved"] = datetime.now(timezone.utc).isoformat()
++    return d
++
++
++def snapshot(sig: cc.Signals, extras: dict) -> dict:
++    """Persist state, return diff vs previous snapshot."""
++    new = _state_from(sig, extras)
++    old = {}
++    try:
++        old = json.loads(STATE_FILE.read_text())
++    except Exception:
++        pass
++    changes = []
++    watch = {"below_wma": "Price vs 200WMA", "in_bottom_window": "Post-peak window", "mvrv_state": "MVRV state",
++             "structure": "Structure", "buy_count": "Buy signals", "sell_count": "Sell signals",
++             "in_peak_window": "Peak window", "in_buy_date": "Halving buy date"}
++    for k, lbl in watch.items():
++        if old and old.get(k) != new.get(k):
++            changes.append(f"{lbl}: {old.get(k)} → {new.get(k)}")
++    if old and abs(new["price"] / max(old.get("price", new["price"]), 1) - 1) > 0.05:
++        changes.append(f"Price moved {new['price']/old['price']-1:+.1%} since last snapshot ({old.get('saved','')[:10]})")
++    if old and new.get("ath") and old.get("ath") and new["ath"] > old["ath"] * 1.001:
++        changes.append("NEW ALL-TIME HIGH — post-peak clock reset")
++    try:
++        STATE_DIR.mkdir(exist_ok=True)
++        STATE_FILE.write_text(json.dumps(new, default=str))
++        with HIST_FILE.open("a") as f:
++            f.write(json.dumps({"saved": new["saved"], "price": new["price"], "ratio": new["ratio"], "mvrv": new["mvrv"],
++                                "buy": new["buy_count"], "sell": new["sell_count"]}, default=str) + "\n")
++    except Exception:
++        pass
++    return {"changes": changes, "previous_saved": old.get("saved"), "first_run": not bool(old)}
++
++
++def history() -> pd.DataFrame:
++    try:
++        rows = [json.loads(l) for l in HIST_FILE.read_text().splitlines() if l.strip()]
++        h = pd.DataFrame(rows); h["saved"] = pd.to_datetime(h["saved"]); return h
++    except Exception:
++        return pd.DataFrame()
++
++
++# ============================================================
++# 8-9. LLM analyst + auditor
++# ============================================================
++def _llm(prompt: str, max_tokens: int = 500) -> str:
++    prov = ai_summary.detect_provider()
++    if not prov:
++        return ""
++    try:
++        return ai_summary.ask_specific(prov, prompt, max_tokens=max_tokens) or ""
++    except Exception:
++        return ""
++
++
++def analyst_agent(context: str) -> str:
++    prompt = ("You are a buy-side crypto strategist writing the morning note. Use ONLY the numbers and headlines below. "
++              "Return exactly four short sections with these headers: CYCLE READ / CATALYSTS (next 14 days, dated) / "
++              "RULE STATUS (which of the user's rules is closest to triggering and the exact trigger) / RISK (single biggest, with the number that would confirm it). "
++              "Every sentence must contain at least one number from the context. No predictions without a base rate from the evidence lines.\n\n" + context)
++    return _llm(prompt, 550)
++
++
++def auditor_agent(analysis: str, context: str) -> str:
++    if not analysis:
++        return ""
++    prompt = ("You are the risk auditor. Below is a CONTEXT (ground truth numbers) and an ANALYSIS written from it. "
++              "List every numeric or factual claim in the ANALYSIS that is NOT supported by the CONTEXT, quoting the claim. "
++              "If everything is supported, reply exactly: 'AUDIT PASS — all claims traceable to context.' Be strict and brief.\n\n"
++              f"CONTEXT:\n{context}\n\nANALYSIS:\n{analysis}")
++    return _llm(prompt, 300)
++
++
++# ============================================================
++# Orchestrator — runs on page launch
++# ============================================================
++@st.cache_data(ttl=900, show_spinner="Agents refreshing state…")
++def run_pipeline(asset: str = "BTC", params: dict | None = None, use_llm: bool = True) -> dict:
++    p = {**cc.DEFAULTS, **(params or {})}
++    halv = halving_agent()
++    if halv.get("ok"):
++        p["next_halving"] = halv["projected_date"]
++    df, meta = cc.merged_history(asset)
++    recal = recalibrate(df) if not df.empty else {}
++    if recal.get("euphoria_threshold_adaptive"):
++        p["mvrv_high"] = recal["euphoria_threshold_adaptive"]
++    live = cc.live_price(asset)
++    sig = cc.compute_signals(df, asset, live, p) if not df.empty else None
++    sent = sentiment_agent(); cal = calendar_agent(); news = news_agent(); etf = etf_agent() if asset == "BTC" else _fail("etf", "BTC only")
++    ev = cc.evidence(asset, p) if not df.empty else {}
++
++    extras = {"halving": halv, "sentiment": sent, "etf": etf, "recal": recal,
++              "calendar": cal.get("upcoming").to_dict("records") if cal.get("ok") else []}
++    diff = snapshot(sig, {k: v for k, v in extras.items() if k != "calendar"}) if sig else {"changes": [], "first_run": True}
++
++    context = ""
++    analysis = audit = ""
++    if sig:
++        plan = {}
++        try:
++            plan = json.loads((STATE_DIR / "crypto_plan.json").read_text()).get(asset, {})
++        except Exception:
++            pass
++        context = cc.context_for_ai(sig, ev, plan)
++        if sent.get("ok"):
++            context += f"\nSentiment: Fear&Greed {sent.get('fear_greed')} ({sent.get('fear_greed_label')}), 7d ago {sent.get('fear_greed_7d_ago')}; funding {sent.get('funding_8h_pct')}%/8h ({sent.get('funding_read')})."
++        if etf.get("ok"):
++            context += f"\nETF flows: last day {etf['last_day_musd']:+.0f}M USD, last 5 days {etf['last5_sum_musd']:+.0f}M ({etf['read']})."
++        if halv.get("ok"):
++            context += f"\nHalving projection from block {halv['height']}: {halv['projected_date']} ({halv['drift_vs_static_days']:+d}d vs static assumption)."
++        if recal:
++            context += f"\nAdaptive euphoria threshold {p['mvrv_high']} (peak MVRV series {recal.get('peak_mvrv_series')})."
++        if cal.get("ok") and len(cal["upcoming"]):
++            context += "\nCalendar: " + "; ".join(f"{r.event} {r.date} (+{r.days}d)" for r in cal["upcoming"].itertuples())
++        if not news.empty:
++            context += "\nTagged headlines (48h): " + " | ".join(f"[{t.tags or 'untagged'}] {t.title}" for t in news.head(12).itertuples())
++        if diff["changes"]:
++            context += "\nChanged since last snapshot: " + "; ".join(diff["changes"])
++        if use_llm:
++            analysis = analyst_agent(context)
++            audit = auditor_agent(analysis, context)
++
++    return {"params": p, "sig": sig, "meta": meta, "evidence": ev, "halving": halv, "sentiment": sent, "etf": etf,
++            "recal": recal, "calendar": cal, "news": news, "diff": diff, "context": context,
++            "analysis": analysis, "audit": audit, "df": df, "live": live}
+diff --git a/stocks_portal/lib/crypto_cycle.py b/stocks_portal/lib/crypto_cycle.py
+new file mode 100644
+index 0000000..b1117ef
+--- /dev/null
++++ b/stocks_portal/lib/crypto_cycle.py
+@@ -0,0 +1,443 @@
++"""
++lib/crypto_cycle.py — BTC / ETH cycle engine (evidence computed in-app).
++
++DATA (all free, no API key):
++  * History + on-chain: Coin Metrics Community CSV on GitHub
++      https://raw.githubusercontent.com/coinmetrics/data/master/csv/{btc,eth}.csv
++    Daily since 2010 (BTC) / 2015 (ETH). Columns used: PriceUSD, CapMVRVCur,
++    CapRealUSD, SplyCur. Updated daily by Coin Metrics. Cached 6h.
++  * Live price: CoinGecko simple/price (free tier, ~30 req/min, no key)
++    -> fallback Coinbase public spot -> fallback last Coin Metrics close.
++
++SIGNALS (each one has an evidence() row computed from the same data):
++  BUY side
++    1. Price below 200-week MA (rolling 1400 calendar days) + depth bands
++       0.85x / 0.66x (where prior cycle lows actually printed).
++    2. Post-peak clock: days since ATH inside [330, 430] (prior troughs:
++       410 / 363 / 364 days after the peaks of 2013, 2017, 2021).
++    3. MVRV < 1.0 (capitulation). MVRV = market cap / realized cap.
++  SELL side
++    A. MVRV > 3.0 (euphoria).
++    B. Post-halving peak window: 365-550 days after a halving (BTC only).
++  TIME backstop (BTC only): buy ~500 days before a halving, sell ~500 after.
++  STRUCTURE: last confirmed pivot high/low (10-bar pivots) + 20-day range.
++
++EVIDENCE PHILOSOPHY
++  Nothing in the UI is a remembered statistic. evidence() re-runs the
++  backtests every session on the downloaded history, and reports the number
++  of *independent episodes* next to every stat, because daily observations
++  inside one bear market are not independent samples.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from datetime import datetime, timedelta, timezone
++import io
++
++import numpy as np
++import pandas as pd
++import requests
++import streamlit as st
++
++CM_URL = "https://raw.githubusercontent.com/coinmetrics/data/master/csv/{asset}.csv"
++CG_URL = "https://api.coingecko.com/api/v3/simple/price"
++CB_URL = "https://api.coinbase.com/v2/prices/{pair}/spot"
++
++ASSETS = {
++    "BTC": {"cm": "btc", "cg": "bitcoin",  "cb": "BTC-USD", "halvings": True},
++    "ETH": {"cm": "eth", "cg": "ethereum", "cb": "ETH-USD", "halvings": False},
++}
++
++# Confirmed halvings + projected next (block 1,050,000). Update the projection
++# from a block-height countdown as it nears; it drifts by weeks with hashrate.
++HALVINGS = [datetime(2012, 11, 28), datetime(2016, 7, 9),
++            datetime(2020, 5, 11), datetime(2024, 4, 20)]
++NEXT_HALVING_PROJECTED = datetime(2028, 3, 25)
++
++# Cycle peaks used for the post-peak clock evidence (daily-close basis)
++CYCLE_PEAKS_BTC = [datetime(2013, 11, 30), datetime(2017, 12, 17),
++                   datetime(2021, 11, 10), datetime(2025, 10, 7)]
++
++DEFAULTS = dict(
++    wma_days=1400, band1=0.85, band2=0.66,
++    win_start=330, win_end=430, proj_days=370,
++    mvrv_low=1.0, mvrv_high=2.5,   # 2.5 not 3: peak MVRV fell 5.1→4.3→2.7→2.2 across cycles
++    lead_days=500, lag_days=500, date_band=14,
++    peak_start=365, peak_end=550, pivot=10,
++)
++
++
++# ============================================================
++# Data
++# ============================================================
++@st.cache_data(ttl=6 * 3600, show_spinner="Loading Coin Metrics history…")
++def load_history(asset: str = "BTC") -> pd.DataFrame:
++    """Daily history with price, mvrv, realized_price. Empty DF on failure."""
++    meta = ASSETS[asset]
++    try:
++        r = requests.get(CM_URL.format(asset=meta["cm"]), timeout=30)
++        r.raise_for_status()
++        raw = pd.read_csv(io.StringIO(r.text), low_memory=False)
++    except Exception:
++        return pd.DataFrame()
++
++    cols = {"time": "time", "PriceUSD": "price"}
++    for c in ("CapMVRVCur", "CapRealUSD", "SplyCur"):
++        if c in raw.columns:
++            cols[c] = c
++    df = raw[list(cols)].rename(columns=cols)
++    df["time"] = pd.to_datetime(df["time"])
++    df = df.dropna(subset=["price"]).sort_values("time").set_index("time")
++    df = df.asfreq("D").ffill()
++    df["mvrv"] = df["CapMVRVCur"] if "CapMVRVCur" in df else np.nan
++    if "CapRealUSD" in df and "SplyCur" in df:
++        df["realized_price"] = df["CapRealUSD"] / df["SplyCur"]
++    else:
++        df["realized_price"] = np.nan
++    return df[["price", "mvrv", "realized_price"]]
++
++
++@st.cache_data(ttl=3600, show_spinner=False)
++def recent_daily(asset: str = "BTC", days: int = 365) -> pd.Series:
++    """Recent daily closes from CoinGecko market_chart (free). Used to extend
++    the Coin Metrics file, which can lag by days/weeks. Empty on failure."""
++    meta = ASSETS[asset]
++    try:
++        r = requests.get(f"https://api.coingecko.com/api/v3/coins/{meta['cg']}/market_chart",
++                         params={"vs_currency": "usd", "days": days, "interval": "daily"}, timeout=15)
++        pts = r.json()["prices"]
++        ser = pd.Series({pd.to_datetime(t, unit="ms").normalize(): float(px) for t, px in pts})
++        return ser[~ser.index.duplicated(keep="last")].sort_index()
++    except Exception:
++        return pd.Series(dtype=float)
++
++
++def merged_history(asset: str = "BTC") -> tuple[pd.DataFrame, dict]:
++    """Coin Metrics history extended to today with CoinGecko closes.
++    Returns (df, meta) where meta reports data ages so the UI can show them."""
++    df = load_history(asset)
++    meta = {"cm_end": None, "price_end": None, "mvrv_end": None}
++    if df.empty:
++        return df, meta
++    meta["cm_end"] = df.index[-1].date()
++    meta["mvrv_end"] = df["mvrv"].dropna().index[-1].date() if df["mvrv"].notna().any() else None
++    rec = recent_daily(asset)
++    if not rec.empty and rec.index[-1] > df.index[-1]:
++        add = rec[rec.index > df.index[-1]]
++        ext = pd.DataFrame({"price": add, "mvrv": np.nan, "realized_price": np.nan})
++        df = pd.concat([df, ext]).asfreq("D").ffill(limit=3)
++        df["price"] = df["price"].ffill()
++    meta["price_end"] = df.index[-1].date()
++    return df, meta
++
++
++@st.cache_data(ttl=60, show_spinner=False)
++def live_price(asset: str = "BTC") -> dict:
++    """{'price', 'change_24h', 'source', 'ts'}; never raises."""
++    meta = ASSETS[asset]
++    try:
++        r = requests.get(CG_URL, params={"ids": meta["cg"], "vs_currencies": "usd",
++                                          "include_24hr_change": "true"}, timeout=8)
++        j = r.json()[meta["cg"]]
++        return {"price": float(j["usd"]), "change_24h": float(j.get("usd_24h_change", 0.0)),
++                "source": "CoinGecko", "ts": datetime.now(timezone.utc)}
++    except Exception:
++        pass
++    try:
++        r = requests.get(CB_URL.format(pair=meta["cb"]), timeout=8)
++        return {"price": float(r.json()["data"]["amount"]), "change_24h": np.nan,
++                "source": "Coinbase", "ts": datetime.now(timezone.utc)}
++    except Exception:
++        pass
++    df = load_history(asset)
++    if not df.empty:
++        return {"price": float(df["price"].iloc[-1]), "change_24h": np.nan,
++                "source": f"Coin Metrics close {df.index[-1].date()}", "ts": df.index[-1]}
++    return {"price": np.nan, "change_24h": np.nan, "source": "unavailable", "ts": None}
++
++
++# ============================================================
++# Signals
++# ============================================================
++@dataclass
++class Signals:
++    asset: str
++    price: float
++    price_source: str
++    wma200: float
++    ratio: float
++    band1_lvl: float
++    band2_lvl: float
++    below_wma: bool
++    ath: float
++    ath_date: datetime
++    days_since_ath: int
++    in_bottom_window: bool
++    projected_bottom: datetime
++    mvrv: float
++    mvrv_state: str            # CAPITULATION / NEUTRAL / EUPHORIA / n/a
++    realized_price: float
++    support: float
++    resistance: float
++    hi20: float
++    lo20: float
++    structure: str             # BULL / BEAR / RANGE
++    buy_count: int
++    sell_count: int
++    # halving layer (BTC)
++    last_halving: datetime | None = None
++    next_halving: datetime | None = None
++    days_since_halving: int | None = None
++    days_to_buy_date: int | None = None
++    buy_date: datetime | None = None
++    sell_date: datetime | None = None
++    in_peak_window: bool = False
++    in_buy_date: bool = False
++    in_sell_date: bool = False
++    notes: list = field(default_factory=list)
++
++
++def _pivots(high: pd.Series, low: pd.Series, n: int):
++    """Last CONFIRMED pivot high/low (n bars each side) and its dates."""
++    ph = high[(high == high.rolling(2 * n + 1, center=True).max())]
++    pl = low[(low == low.rolling(2 * n + 1, center=True).min())]
++    # only pivots with n bars after them are confirmed
++    cutoff = high.index[-1] - timedelta(days=n)
++    ph = ph[ph.index <= cutoff]
++    pl = pl[pl.index <= cutoff]
++    return ph, pl
++
++
++def compute_signals(df: pd.DataFrame, asset: str = "BTC", live: dict | None = None,
++                    p: dict | None = None) -> Signals | None:
++    if df is None or df.empty or len(df) < 1500:
++        return None
++    p = {**DEFAULTS, **(p or {})}
++    live = live or {}
++    price = float(live.get("price") or df["price"].iloc[-1])
++    src = live.get("source", "history")
++
++    s = df["price"]
++    wma = s.rolling(p["wma_days"]).mean()
++    wma200 = float(wma.iloc[-1])
++    ratio = price / wma200
++
++    ath = float(s.max()); ath_date = s.idxmax().to_pydatetime()
++    if price > ath:
++        ath, ath_date = price, datetime.utcnow()
++    days_since_ath = (datetime.utcnow() - ath_date).days
++    in_window = p["win_start"] <= days_since_ath <= p["win_end"]
++
++    mvrv_hist = df["mvrv"].dropna()
++    mvrv = float(mvrv_hist.iloc[-1]) if not mvrv_hist.empty else np.nan
++    rp = float(df["realized_price"].dropna().iloc[-1]) if df["realized_price"].notna().any() else np.nan
++    if np.isnan(rp) and not mvrv_hist.empty and mvrv_hist.iloc[-1] > 0:
++        # realized price = price / MVRV at the last on-chain observation
++        rp = float(s[mvrv_hist.index[-1]] / mvrv_hist.iloc[-1])
++    # scale MVRV to today's price (realized price moves slowly; on-chain file lags)
++    if not np.isnan(mvrv) and not np.isnan(rp) and rp > 0:
++        mvrv = price / rp
++    # EUPHORIA label is reserved for the post-halving peak window (evidence: a
++    # threshold alone was a bad exit); outside it the same reading is "ELEVATED".
++    mvrv_state = ("n/a" if np.isnan(mvrv) else
++                  "CAPITULATION" if mvrv < p["mvrv_low"] else
++                  "ELEVATED" if mvrv > p["mvrv_high"] else "NEUTRAL")
++
++    # structure on daily closes (Coin Metrics has no OHLC): use close as hi/lo proxy
++    n = p["pivot"]
++    ph, pl = _pivots(s, s, n)
++    last_ph = float(ph.iloc[-1]) if len(ph) else np.nan
++    last_pl = float(pl.iloc[-1]) if len(pl) else np.nan
++    prev_ph = float(ph.iloc[-2]) if len(ph) > 1 else np.nan
++    prev_pl = float(pl.iloc[-2]) if len(pl) > 1 else np.nan
++    hi20 = float(s.iloc[-20:].max()); lo20 = float(s.iloc[-20:].min())
++    resistance = max(last_ph, hi20) if not np.isnan(last_ph) else hi20
++    support = min(last_pl, lo20) if not np.isnan(last_pl) else lo20
++    if np.isnan(prev_ph) or np.isnan(prev_pl):
++        structure = "RANGE"
++    else:
++        hh, hl = last_ph > prev_ph, last_pl > prev_pl
++        structure = "BULL (HH+HL)" if hh and hl else "BEAR (LH+LL)" if not hh and not hl else "RANGE"
++
++    below = price < wma200
++    capit = mvrv_state == "CAPITULATION"
++    euph = mvrv_state == "ELEVATED"
++
++    sig = Signals(
++        asset=asset, price=price, price_source=src, wma200=wma200, ratio=ratio,
++        band1_lvl=wma200 * p["band1"], band2_lvl=wma200 * p["band2"], below_wma=below,
++        ath=ath, ath_date=ath_date, days_since_ath=days_since_ath, in_bottom_window=in_window,
++        projected_bottom=ath_date + timedelta(days=p["proj_days"]),
++        mvrv=mvrv, mvrv_state=mvrv_state, realized_price=rp,
++        support=support, resistance=resistance, hi20=hi20, lo20=lo20, structure=structure,
++        buy_count=int(below) + int(in_window) + int(capit), sell_count=0,
++    )
++
++    # Halving clock applies to ETH too: ETH's 2017/2021 peaks landed inside
++    # BTC's post-halving window. UI labels it "BTC cycle clock" for ETH.
++    if True:
++        now = datetime.utcnow()
++        nh = p.get("next_halving")
++        if isinstance(nh, str):
++            try:
++                nh = datetime.fromisoformat(nh[:10])
++            except Exception:
++                nh = None
++        hs = HALVINGS + [nh if isinstance(nh, datetime) else NEXT_HALVING_PROJECTED]
++        past = [h for h in hs if h <= now]; fut = [h for h in hs if h > now]
++        sig.last_halving = past[-1] if past else None
++        sig.next_halving = fut[0] if fut else None
++        if sig.last_halving:
++            sig.days_since_halving = (now - sig.last_halving).days
++            sig.sell_date = sig.last_halving + timedelta(days=p["lag_days"])
++            sig.in_peak_window = p["peak_start"] <= sig.days_since_halving <= p["peak_end"]
++            sig.in_sell_date = abs((sig.sell_date - now).days) <= p["date_band"]
++        if sig.next_halving:
++            sig.buy_date = sig.next_halving - timedelta(days=p["lead_days"])
++            sig.days_to_buy_date = (sig.buy_date - now).days
++            sig.in_buy_date = abs(sig.days_to_buy_date) <= p["date_band"]
++        # Evidence: MVRV>3 alone was a BAD sell signal (67% of days were higher
++        # 1y later). The peak window is the primary exit signal (1y fwd median
++        # -48%, 19% positive); MVRV>2.5 INSIDE the window sharpens it (-58%).
++        sig.sell_count = int(sig.in_peak_window) + int(euph and sig.in_peak_window)
++        if euph and sig.in_peak_window:
++            sig.mvrv_state = "EUPHORIA"
++
++    if src.startswith("Coin Metrics"):
++        sig.notes.append("Live price unavailable — using last daily close.")
++    return sig
++
++
++# ============================================================
++# Evidence — recomputed from the data every session
++# ============================================================
++def _fwd_stats(mask: pd.Series, s: pd.Series, hold: int) -> dict:
++    fwd = (s.shift(-hold) / s - 1)
++    m = pd.concat([mask, fwd], axis=1).dropna()
++    m.columns = ["mask", "fwd"]
++    sub = m[m["mask"]]
++    if sub.empty:
++        return {"n_days": 0, "episodes": 0, "pct_positive": np.nan, "median": np.nan}
++    # independent episodes = separate runs of the condition being true
++    runs = (m["mask"] != m["mask"].shift()).cumsum()
++    episodes = int(runs[m["mask"]].nunique())
++    return {"n_days": int(len(sub)), "episodes": episodes,
++            "pct_positive": float((sub["fwd"] > 0).mean() * 100),
++            "median": float(sub["fwd"].median() * 100)}
++
++
++@st.cache_data(ttl=6 * 3600, show_spinner=False)
++def evidence(asset: str = "BTC", p: dict | None = None) -> dict:
++    """Backtests behind every signal, with episode counts. Keys -> DataFrame/rows."""
++    df = load_history(asset)
++    if df.empty or len(df) < 1500:
++        return {}
++    p = {**DEFAULTS, **(p or {})}
++    s = df["price"]; mvrv = df["mvrv"]
++    wma = s.rolling(p["wma_days"]).mean()
++
++    rows = []
++    for hold, lbl in ((365, "1y"), (730, "2y")):
++        st1 = _fwd_stats(s < wma, s, hold)
++        rows.append({"signal": "Price < 200-week MA", "hold": lbl, **st1})
++        if mvrv.notna().any():
++            st2 = _fwd_stats(mvrv < p["mvrv_low"], s, hold)
++            rows.append({"signal": f"MVRV < {p['mvrv_low']}", "hold": lbl, **st2})
++            st3 = _fwd_stats(mvrv > p["mvrv_high"], s, hold)
++            rows.append({"signal": f"MVRV > {p['mvrv_high']} (sell side)", "hold": lbl, **st3})
++        if asset == "BTC" or True:
++            dsh = pd.Series(np.nan, index=s.index)
++            for H in HALVINGS:
++                mk = s.index >= H
++                dsh[mk] = (s.index[mk] - H).days
++            peakwin = (dsh >= p["peak_start"]) & (dsh <= p["peak_end"])
++            rows.append({"signal": f"Post-halving peak window {p['peak_start']}-{p['peak_end']}d (sell side)", "hold": lbl, **_fwd_stats(peakwin, s, hold)})
++            if mvrv.notna().any():
++                rows.append({"signal": f"MVRV > {p['mvrv_high']} inside peak window (sell side)", "hold": lbl, **_fwd_stats(peakwin & (mvrv > p["mvrv_high"]), s, hold)})
++        base = _fwd_stats(pd.Series(True, index=s.index), s, hold)
++        rows.append({"signal": "ANY day (baseline)", "hold": lbl, **base})
++    sig_tbl = pd.DataFrame(rows)
++
++    # cycle-low position vs 200WMA and MVRV at each historical trough
++    troughs = []
++    if asset == "BTC":
++        for i, pk in enumerate(CYCLE_PEAKS_BTC):
++            end = CYCLE_PEAKS_BTC[i + 1] if i + 1 < len(CYCLE_PEAKS_BTC) else s.index[-1]
++            seg = s[pk:end]
++            if seg.empty:
++                continue
++            tr = seg.idxmin()
++            troughs.append({
++                "peak": pk.date(), "trough": tr.date(),
++                "days_peak_to_trough": (tr - pk).days,
++                "drawdown_%": round((seg.min() / s[pk] - 1) * 100, 1),
++                "trough_price/200WMA": round(float(s[tr] / wma[tr]), 2) if not np.isnan(wma[tr]) else np.nan,
++                "trough_MVRV": round(float(mvrv[tr]), 2) if not np.isnan(mvrv[tr]) else np.nan,
++                "MVRV_at_peak": round(float(mvrv[pk]), 2) if not np.isnan(mvrv[pk]) else np.nan,
++                "complete": bool(i + 1 < len(CYCLE_PEAKS_BTC)),
++            })
++    troughs_tbl = pd.DataFrame(troughs)
++
++    # halving 500/500 rule vs all 1000-day windows (era-controlled)
++    halv_rows = []
++    if asset == "BTC":
++        n = p["lead_days"] + p["lag_days"]
++        all_r = (s.shift(-n) / s - 1).dropna()
++        for h in HALVINGS:
++            b = h - timedelta(days=p["lead_days"]); e = h + timedelta(days=p["lag_days"])
++            if b in s.index and e in s.index:
++                r = s[e] / s[b] - 1
++                local = all_r[(all_r.index >= b - timedelta(days=365)) & (all_r.index <= b + timedelta(days=365))]
++                halv_rows.append({"halving": h.date(), "buy": b.date(), "sell": e.date(),
++                                  "return_%": round(r * 100), "local_median_%": round(local.median() * 100) if len(local) else np.nan,
++                                  "percentile_vs_nearby_windows": round(float((local < r).mean() * 100)) if len(local) else np.nan})
++        halv_rows.append({"halving": "ALL 1000d windows", "buy": "", "sell": "",
++                          "return_%": round(all_r.median() * 100), "local_median_%": np.nan,
++                          "percentile_vs_nearby_windows": round(float((all_r > 0).mean() * 100))})
++    halv_tbl = pd.DataFrame(halv_rows)
++
++    return {"signals": sig_tbl, "troughs": troughs_tbl, "halving": halv_tbl,
++            "data_start": s.index[0].date(), "data_end": s.index[-1].date(), "n_days": int(len(s))}
++
++
++# ============================================================
++# Plan / verdict
++# ============================================================
++def verdict(sig: Signals, plan: dict) -> list[str]:
++    """Turn signals + the user's written rules into plain-language actions."""
++    out = []
++    px = sig.price
++    if plan.get("mode") == "cash":
++        trg = plan.get("rebuy_close")
++        if trg:
++            out.append(f"REBUY RULE: daily close > {trg:,.0f} → buy next day (price is {px/trg-1:+.1%} vs trigger).")
++        for i, rung in enumerate(plan.get("ladder", []), 1):
++            out.append(f"LADDER {i}: buy at {rung:,.0f} ({px/rung-1:+.1%} above)." if px > rung else f"LADDER {i}: {rung:,.0f} — REACHED")
++        if sig.buy_date:
++            out.append(f"BACKSTOP: halving buy date {sig.buy_date.date()} ({sig.days_to_buy_date}d) — buy regardless if no rule fired.")
++    else:
++        if plan.get("stop"):
++            out.append(f"STOP: {plan['stop']:,.0f} ({px/plan['stop']-1:+.1%} cushion).")
++        out.append("EXIT MARKERS: MVRV > 3 or post-halving peak window → begin scale-out.")
++    out.append(f"200WMA {sig.wma200:,.0f} · band 0.85x {sig.band1_lvl:,.0f} · band 0.66x {sig.band2_lvl:,.0f}")
++    out.append(f"Structure: {sig.structure} · S {sig.support:,.0f} / R {sig.resistance:,.0f}")
++    return out
++
++
++def context_for_ai(sig: Signals, ev: dict, plan: dict) -> str:
++    """Compact, numbers-first context for the AI briefing card."""
++    lines = [f"{sig.asset} {sig.price:,.0f} ({sig.price_source}). 200WMA {sig.wma200:,.0f} → ratio {sig.ratio:.2f}x (below={sig.below_wma}).",
++             f"ATH {sig.ath:,.0f} on {sig.ath_date.date()}, {sig.days_since_ath}d ago; bottom window {DEFAULTS['win_start']}-{DEFAULTS['win_end']}d → in_window={sig.in_bottom_window}; projected trough date {sig.projected_bottom.date()}.",
++             f"MVRV {sig.mvrv:.2f} ({sig.mvrv_state}); realized price {sig.realized_price:,.0f}.",
++             f"Structure {sig.structure}; support {sig.support:,.0f}, resistance {sig.resistance:,.0f}, 20d range {sig.lo20:,.0f}-{sig.hi20:,.0f}.",
++             f"Buy signals {sig.buy_count}/3, sell signals {sig.sell_count}/2."]
++    if sig.buy_date:
++        lines.append(f"Halving: last {sig.last_halving.date()} ({sig.days_since_halving}d ago), next ~{sig.next_halving.date()}; 500d buy date {sig.buy_date.date()} in {sig.days_to_buy_date}d; peak window={sig.in_peak_window}.")
++    if ev.get("signals") is not None and not ev["signals"].empty:
++        t = ev["signals"]
++        lines.append("Evidence (computed from data): " + "; ".join(
++            f"{r.signal} {r.hold}: {r.pct_positive:.0f}% positive, median {r.median:+.0f}%, {r.episodes} episodes"
++            for r in t.itertuples() if r.hold == "1y"))
++    lines.append("User plan: " + "; ".join(verdict(sig, plan)))
++    return "\n".join(lines)
+diff --git a/stocks_portal/lib/funnel.py b/stocks_portal/lib/funnel.py
+new file mode 100644
+index 0000000..1ec2f4c
+--- /dev/null
++++ b/stocks_portal/lib/funnel.py
+@@ -0,0 +1,246 @@
++"""
++lib/funnel.py — the 4-step selection funnel (Pond → Fish → Focus → Review).
++
++Named "Funnel steps" deliberately: the app already uses "Stage 1-4" for
++Weinstein stage analysis (lib/stages.py). Don't conflate them.
++
++  F1 POND    mechanical screen, zero judgment  (~universe → ~20)
++  F2 FISH    score + rank + correlation kill   (~20 → ~5)
++  F3 FOCUS   three written questions + sizing  (~5 → 1-2)
++  F4 REVIEW  re-check gates on each earnings   (hold / exit)
++
++Every gate carries its evidence source in GATES[...]["evidence"]. These are
++citations to the literature, not statistics remembered by an LLM. The app
++does not (yet) re-derive these factor premia itself; if you want that, the
++honest next step is a factor backtest on the same universe (see TODO).
++
++Data: yfinance (price, quarterly statements, info), FMP analyst estimates
++if FMP_API_KEY is set (revisions gate), existing lib.screener for price gates.
++"""
++
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import numpy as np
++import pandas as pd
++import streamlit as st
++
++from . import data, screener
++
++THESIS_FILE = Path(__file__).parent.parent / ".cache" / "funnel_theses.json"
++
++GATES = {
++    "regime": {
++        "label": "Regime: S&P 500 above rising 200-day MA",
++        "evidence": "Faber (2007) 'A Quantitative Approach to Tactical Asset Allocation'; "
++                    "Moskowitz, Ooi & Pedersen (2012) 'Time Series Momentum'. Trend filters cut drawdowns; "
++                    "breakouts fail far more often in index downtrends.",
++    },
++    "trend": {
++        "label": "Trend: Weinstein Stage 2 (price > rising 30-wk MA), within 20% of 52-wk high",
++        "evidence": "Weinstein (1988); George & Hwang (2004) '52-Week High and Momentum Investing' — proximity to the "
++                    "52-week high predicts returns via anchoring/underreaction.",
++    },
++    "rs": {
++        "label": "Relative strength: 12-1 month momentum positive and above benchmark",
++        "evidence": "Jegadeesh & Titman (1993); Asness, Moskowitz & Pedersen (2013) 'Value and Momentum Everywhere' — "
++                    "momentum premium ~1%/month historically, replicated across markets and a century of data.",
++    },
++    "accel": {
++        "label": "Fundamental fuel: revenue growth ACCELERATING with gross margin EXPANDING",
++        "evidence": "Chan, Jegadeesh & Lakonishok (1996) 'Momentum Strategies' — earnings momentum drives price momentum; "
++                    "Novy-Marx (2013) gross profitability. Acceleration + margin expansion = operating leverage inflection.",
++    },
++    "revisions": {
++        "label": "Analysts chasing: estimates revised up / recent beats",
++        "evidence": "Post-earnings-announcement drift (Ball & Brown 1968; Bernard & Thomas 1989). Markets underreact "
++                    "to large beats and upward revisions for months.",
++    },
++    "crash_risk": {
++        "label": "Known failure mode: momentum crashes at regime turns",
++        "evidence": "Daniel & Moskowitz (2016) 'Momentum Crashes' — momentum portfolios lost >70% in 2009's reversal. "
++                    "The regime gate + stops exist to survive this.",
++    },
++    "base_rate": {
++        "label": "Base rate: only ~4% of stocks create the market's net wealth",
++        "evidence": "Bessembinder (2018) 'Do Stocks Outperform Treasury Bills?' — the screen finds a pond, not the fish; "
++                    "sizing and stops carry half the load.",
++    },
++}
++
++
++# ============================================================
++# F1 — POND: fundamentals per ticker (yfinance quarterly statements)
++# ============================================================
++def _row(df: pd.DataFrame, names: tuple[str, ...]) -> pd.Series | None:
++    if df is None or df.empty:
++        return None
++    for n in names:
++        if n in df.index:
++            return df.loc[n].dropna()
++    return None
++
++
++@st.cache_data(ttl=6 * 3600, show_spinner=False)
++def fundamentals(ticker: str) -> dict:
++    """Revenue acceleration + gross-margin delta + (optional) revisions. Never raises."""
++    out = {"ticker": ticker, "rev_g_now": np.nan, "rev_g_prev": np.nan, "accel_pp": np.nan,
++           "gm_now": np.nan, "gm_prev": np.nan, "gm_delta_pp": np.nan,
++           "surprise_avg": np.nan, "rev_up_pct": np.nan, "accel_ok": False, "margin_ok": False, "rev_ok": None}
++    fin = data.get_financials(ticker)
++    qi = fin.get("income_q") if fin else None
++    rev = _row(qi, ("Total Revenue", "Operating Revenue"))
++    gp = _row(qi, ("Gross Profit",))
++    try:
++        if rev is not None and len(rev) >= 5:
++            g_now = float(rev.iloc[0] / rev.iloc[4] - 1) * 100
++            g_prev = float(rev.iloc[1] / rev.iloc[5] - 1) * 100 if len(rev) >= 6 else float(rev.iloc[1] / rev.iloc[4] - 1) * 100
++            out.update(rev_g_now=round(g_now, 1), rev_g_prev=round(g_prev, 1), accel_pp=round(g_now - g_prev, 1),
++                       accel_ok=bool(g_now > g_prev and g_now > 0))
++        if rev is not None and gp is not None and len(rev) >= 5 and len(gp) >= 5:
++            gm_now = float(gp.iloc[0] / rev.iloc[0]) * 100
++            gm_prev = float(gp.iloc[4] / rev.iloc[4]) * 100
++            out.update(gm_now=round(gm_now, 1), gm_prev=round(gm_prev, 1), gm_delta_pp=round(gm_now - gm_prev, 1),
++                       margin_ok=bool(gm_now > gm_prev))
++    except Exception:
++        pass
++    # revisions / beats: FMP estimates if key, else yfinance earnings surprise history
++    try:
++        if data.has_fmp():
++            est = data.fmp_analyst_estimates(ticker)
++            if est is not None and not est.empty and "estimatedEpsAvg" in est.columns:
++                e = est.sort_values(est.columns[0]).tail(2)["estimatedEpsAvg"].astype(float)
++                if len(e) == 2 and e.iloc[0] != 0:
++                    out["rev_up_pct"] = round(float(e.iloc[1] / e.iloc[0] - 1) * 100, 1)
++                    out["rev_ok"] = out["rev_up_pct"] > 0
++        if out["rev_ok"] is None:
++            ed = data.get_earnings_dates(ticker)
++            if ed is not None and not ed.empty and "Surprise(%)" in ed.columns:
++                s = ed["Surprise(%)"].dropna().astype(float).head(4)
++                if len(s):
++                    out["surprise_avg"] = round(float(s.mean()), 1)
++                    out["rev_ok"] = bool(s.mean() > 0 and (s > 0).mean() >= 0.75)
++    except Exception:
++        pass
++    return out
++
++
++@st.cache_data(ttl=3600, show_spinner="Running the pond screen…")
++def pond(tickers: list[str], bench: str = "SPY", near_high_pct: float = -20.0,
++         max_fundamentals: int = 80) -> pd.DataFrame:
++    """F1: price gates on the whole universe (fast), fundamentals on survivors only."""
++    px = screener.screen_universe(tickers, bench=bench)
++    if px.empty:
++        return px
++    g = px.copy()
++    g["gate_trend"] = (g["stage"] == "STAGE 2") & (g["pct_from_52w_high"] >= near_high_pct)
++    g["gate_rs"] = (g["12_1_mom"].fillna(-1) > 0) & (g["rs_vs_bench"].fillna(-1) > 0)
++    surv = g[g["gate_trend"] & g["gate_rs"]].head(max_fundamentals)
++    rows = [fundamentals(t) for t in surv["ticker"]]
++    f = pd.DataFrame(rows) if rows else pd.DataFrame(columns=["ticker"])
++    out = surv.merge(f, on="ticker", how="left")
++    out["gate_accel"] = out["accel_ok"].fillna(False).astype(bool)
++    out["gate_margin"] = out["margin_ok"].fillna(False).astype(bool)
++    out["gate_rev"] = out["rev_ok"].map(lambda v: bool(v) if v is not None and not (isinstance(v, float) and np.isnan(v)) else False)
++    out["gates_passed"] = out[["gate_trend", "gate_rs", "gate_accel", "gate_margin", "gate_rev"]].sum(axis=1)
++    return out.sort_values(["gates_passed", "fast_composite"], ascending=False).reset_index(drop=True)
++
++
++# ============================================================
++# F2 — FISH: score, rank, correlation kill
++# ============================================================
++def _pct_rank(s: pd.Series) -> pd.Series:
++    return s.rank(pct=True).fillna(0.0)
++
++
++def fish(p: pd.DataFrame, min_gates: int = 4, top_n: int = 5, corr_cut: float = 0.70,
++         lookback: str = "6mo") -> tuple[pd.DataFrame, pd.DataFrame]:
++    """Returns (ranked survivors, dropped-by-correlation). Score = mean pct-rank of
++    acceleration, margin delta, revisions/beats, and relative strength."""
++    if p.empty:
++        return p, pd.DataFrame()
++    f = p[p["gates_passed"] >= min_gates].copy()
++    if f.empty:
++        return f, pd.DataFrame()
++    rev_metric = f["rev_up_pct"].where(f["rev_up_pct"].notna(), f["surprise_avg"])
++    f["score"] = (_pct_rank(f["accel_pp"]) + _pct_rank(f["gm_delta_pp"]) +
++                  _pct_rank(rev_metric) + _pct_rank(f["rs_vs_bench"])) / 4 * 100
++    f = f.sort_values("score", ascending=False).reset_index(drop=True)
++
++    # correlation kill: same trade → keep the higher score
++    keep, dropped = [], []
++    try:
++        hist = data.bulk_history(list(f["ticker"].head(30)), period=lookback)
++        rets = pd.DataFrame({t: hist[t]["Close"].pct_change() for t in f["ticker"].head(30) if t in hist}).dropna(how="all")
++        corr = rets.corr()
++        for t in f["ticker"]:
++            if t not in corr:
++                keep.append(t); continue
++            twin = next((k for k in keep if k in corr and corr.loc[t, k] >= corr_cut), None)
++            if twin is None:
++                keep.append(t)
++            else:
++                dropped.append({"ticker": t, "same_trade_as": twin, "corr": round(float(corr.loc[t, twin]), 2)})
++            if len(keep) >= top_n:
++                break
++    except Exception:
++        keep = list(f["ticker"].head(top_n))
++    ranked = f[f["ticker"].isin(keep)].head(top_n).reset_index(drop=True)
++    return ranked, pd.DataFrame(dropped)
++
++
++# ============================================================
++# F3 — FOCUS: theses + sizing
++# ============================================================
++def load_theses() -> dict:
++    try:
++        return json.loads(THESIS_FILE.read_text())
++    except Exception:
++        return {}
++
++
++def save_thesis(ticker: str, thesis: dict):
++    allt = load_theses()
++    allt[ticker] = thesis
++    try:
++        THESIS_FILE.parent.mkdir(exist_ok=True)
++        THESIS_FILE.write_text(json.dumps(allt, indent=1))
++    except Exception:
++        pass
++
++
++def size_position(portfolio: float, max_loss_pct: float, entry: float, stop: float) -> dict:
++    """Shares such that hitting the stop costs max_loss_pct of the portfolio."""
++    if entry <= 0 or stop <= 0 or stop >= entry:
++        return {}
++    risk_per_share = entry - stop
++    dollars_at_risk = portfolio * max_loss_pct / 100
++    shares = int(dollars_at_risk // risk_per_share)
++    return {"shares": shares, "position_$": round(shares * entry), "position_pct": round(shares * entry / portfolio * 100, 1),
++            "risk_$": round(shares * risk_per_share), "stop_dist_pct": round((entry / stop - 1) * 100, 1)}
++
++
++# ============================================================
++# F4 — REVIEW
++# ============================================================
++def review(ticker: str) -> dict:
++    """Re-run the gates for a held name + next earnings date."""
++    f = fundamentals(ticker)
++    ed = data.get_earnings_dates(ticker)
++    nxt = None
++    try:
++        fut = ed[ed.index > pd.Timestamp.now(tz=ed.index.tz)] if ed is not None and not ed.empty else pd.DataFrame()
++        nxt = fut.index.min().date() if not fut.empty else None
++    except Exception:
++        pass
++    df = data.get_history(ticker, period="2y")
++    trend_ok = rs_ok = None
++    if not df.empty and len(df) > 200:
++        from . import stages
++        d = stages.classify(df); last = d.iloc[-1]
++        trend_ok = bool(last["stage"] == "STAGE 2")
++        rs_ok = bool(df["close"].iloc[-1] / df["close"].iloc[-252] - 1 > 0) if len(df) >= 252 else None
++    return {**f, "next_earnings": nxt, "gate_trend": trend_ok, "gate_rs": rs_ok,
++            "gates_ok": sum(bool(x) for x in (trend_ok, rs_ok, f["accel_ok"], f["margin_ok"], f["rev_ok"]))}
+diff --git a/stocks_portal/requirements.txt b/stocks_portal/requirements.txt
+index cf67089..93a6409 100644
+--- a/stocks_portal/requirements.txt
++++ b/stocks_portal/requirements.txt
+@@ -1,4 +1,4 @@
+-streamlit>=1.28
++streamlit>=1.40
+ yfinance>=0.2.40
+ pandas>=2.0
+ numpy>=1.24
+diff --git a/stocks_portal/scripts/refresh_crypto.py b/stocks_portal/scripts/refresh_crypto.py
+new file mode 100644
+index 0000000..899bef0
+--- /dev/null
++++ b/stocks_portal/scripts/refresh_crypto.py
+@@ -0,0 +1,25 @@
++"""
++Headless daily refresh: runs the agent pipeline for BTC and ETH, writes the
++snapshot + history into .cache/ so the app opens with fresh state and a
++growing history even when nobody has visited. Run by .github/workflows/crypto_refresh.yml.
++
++Usage:  python scripts/refresh_crypto.py   (from stocks_portal/)
++Set GROQ_API_KEY / GEMINI_API_KEY as repo secrets to include the LLM notes.
++"""
++import json, os, sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
++from lib import crypto_agents as ag  # noqa: E402
++
++out = {}
++for asset in ("BTC", "ETH"):
++    R = ag.run_pipeline(asset, use_llm=bool(os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY")))
++    s = R["sig"]
++    out[asset] = {"price": s.price if s else None, "ratio": round(s.ratio, 3) if s else None,
++                  "buy": s.buy_count if s else None, "sell": s.sell_count if s else None,
++                  "changes": R["diff"].get("changes"), "halving": R["halving"].get("projected_date"),
++                  "analysis": R["analysis"][:2000], "audit": R["audit"][:800]}
++    print(asset, json.dumps(out[asset], default=str)[:400])
++Path(".cache").mkdir(exist_ok=True)
++Path(".cache/last_refresh.json").write_text(json.dumps(out, default=str, indent=1))
+diff --git a/stocks_portal/views/crypto.py b/stocks_portal/views/crypto.py
+new file mode 100644
+index 0000000..9dc8e8b
+--- /dev/null
++++ b/stocks_portal/views/crypto.py
+@@ -0,0 +1,219 @@
++"""
++₿ Crypto Cycle — a living decision framework, not a static page.
++
++On launch, lib/crypto_agents.run_pipeline() (cached 15 min):
++  data agents  → block-height halving projection, live price, Fear&Greed, funding,
++                 ETF flows, tagged news, macro calendar
++  recalibrate  → adaptive euphoria threshold from the declining peak-MVRV series
++  snapshot     → persists state; "what changed since last visit"
++  LLM analyst  → structured morning note from numbers only
++  LLM auditor  → second pass flags any claim not traceable to the numbers
++Optional: a daily GitHub Actions cron (scripts/refresh_crypto.py) does the same
++headless and commits the snapshot, so history accrues even when nobody opens the app.
++"""
++
++import json
++from datetime import datetime
++from pathlib import Path
++
++import numpy as np
++import pandas as pd
++import plotly.graph_objects as go
++import streamlit as st
++
++from lib import crypto_agents as ag, crypto_cycle as cc
++
++st.title("₿ Crypto Cycle")
++PLAN_FILE = Path(__file__).parent.parent / ".cache" / "crypto_plan.json"
++GREEN, RED, AMBER, GREY, BLUE = "#22C55E", "#EF4444", "#FF8C00", "#8a93a6", "#3B82F6"
++
++
++def _load_plan() -> dict:
++    try:
++        return json.loads(PLAN_FILE.read_text())
++    except Exception:
++        return {}
++
++
++def _save_plan(plan: dict):
++    try:
++        PLAN_FILE.parent.mkdir(exist_ok=True); PLAN_FILE.write_text(json.dumps(plan))
++    except Exception:
++        pass
++
++
++def _card(col, label, value, sub="", color=GREY):
++    col.markdown(
++        f"<div style='border-left:4px solid {color};padding:8px 12px;margin:4px 0;"
++        f"background:rgba(255,255,255,0.03);border-radius:6px'>"
++        f"<div style='font-size:12px;color:#8a93a6'>{label}</div>"
++        f"<div style='font-size:20px;font-weight:700'>{value}</div>"
++        f"<div style='font-size:12px;color:#8a93a6'>{sub}</div></div>", unsafe_allow_html=True)
++
++
++# ------------------------------------------------------------ controls + pipeline
++top = st.columns([1, 2, 1, 1])
++asset = top[0].radio("Asset", ["BTC", "ETH"], horizontal=True)
++years = top[1].slider("Chart window (years)", 1, 12, 4)
++use_llm = top[2].toggle("LLM agents", value=True, help="Analyst + auditor via the provider in Secrets")
++if top[3].button("Force refresh"):
++    st.cache_data.clear()
++
++R = ag.run_pipeline(asset, use_llm=use_llm)
++sig, p, meta = R["sig"], R["params"], R["meta"]
++if sig is None:
++    st.error("History unavailable (GitHub/CoinGecko unreachable). Try Force refresh."); st.stop()
++df = R["df"]
++
++# ------------------------------------------------------------ live header (60s)
++@st.fragment(run_every="60s")
++def live_header():
++    live = cc.live_price(asset)
++    s2 = cc.compute_signals(df, asset, live, p) or sig
++    st.session_state["crypto_sig"] = s2
++    c = st.columns(5)
++    chg = live.get("change_24h", np.nan)
++    c[0].metric(f"{asset} · {live['source']}", f"${s2.price:,.0f}", f"{chg:+.2f}% 24h" if not np.isnan(chg) else None)
++    c[1].metric("vs 200-week MA", f"{s2.ratio:.2f}x", f"MA ${s2.wma200:,.0f}", delta_color="off")
++    c[2].metric("Days since ATH", f"{s2.days_since_ath}d", "IN BOTTOM WINDOW" if s2.in_bottom_window else f"window {p['win_start']}-{p['win_end']}d", delta_color="off")
++    c[3].metric("MVRV (live-scaled)", f"{s2.mvrv:.2f}" if not np.isnan(s2.mvrv) else "n/a", s2.mvrv_state, delta_color="off")
++    c[4].metric("Signals", f"BUY {s2.buy_count}/3", f"SELL {s2.sell_count}/2", delta_color="off")
++    st.caption(f"{datetime.utcnow():%H:%M:%S} UTC · price history to {meta['price_end']} · on-chain to {meta['mvrv_end']} · "
++               f"agents last ran {R['diff'].get('previous_saved', '—') or 'first run'}")
++
++
++live_header()
++sig = st.session_state.get("crypto_sig", sig)
++
++# ------------------------------------------------------------ what changed
++diff = R["diff"]
++if diff.get("changes"):
++    st.warning("**Changed since last visit:** " + " · ".join(diff["changes"]))
++elif not diff.get("first_run"):
++    st.info("No signal changes since last snapshot.")
++
++# ------------------------------------------------------------ signal cards
++r1 = st.columns(4)
++_card(r1[0], "1 · Price vs 200WMA", "BELOW ✅" if sig.below_wma else "above",
++      f"0.85x ${sig.band1_lvl:,.0f} · 0.66x ${sig.band2_lvl:,.0f}", GREEN if sig.below_wma else GREY)
++_card(r1[1], "2 · Post-peak clock", "IN WINDOW ✅" if sig.in_bottom_window else f"day {sig.days_since_ath}",
++      f"ATH ${sig.ath:,.0f} {sig.ath_date:%Y-%m-%d} · proj. trough {sig.projected_bottom:%Y-%m-%d}", GREEN if sig.in_bottom_window else GREY)
++_card(r1[2], "3 · MVRV", sig.mvrv_state, f"{sig.mvrv:.2f} · realized ${sig.realized_price:,.0f}" if not np.isnan(sig.mvrv) else "no on-chain",
++      GREEN if sig.mvrv_state == "CAPITULATION" else RED if sig.mvrv_state == "EUPHORIA" else GREY)
++_card(r1[3], "Structure", sig.structure, f"S ${sig.support:,.0f} · R ${sig.resistance:,.0f}",
++      GREEN if sig.structure.startswith("BULL") else RED if sig.structure.startswith("BEAR") else AMBER)
++
++h = R["halving"]; sent = R["sentiment"]; etf = R["etf"]; recal = R["recal"]
++r2 = st.columns(4)
++_card(r2[0], "Halving clock · SELL A" + ("" if asset == "BTC" else " (BTC schedule)"),
++      "PEAK WINDOW ⚠️" if sig.in_peak_window else f"{sig.days_since_halving}d since",
++      (f"next ~{sig.next_halving:%Y-%m-%d} from block {h['height']:,} ({h['drift_vs_static_days']:+d}d vs static)" if h.get("ok") else f"next ~{sig.next_halving:%Y-%m-%d} (static)"),
++      RED if sig.in_peak_window else GREY)
++_card(r2[1], "500d BUY date (backstop)", "NOW" if sig.in_buy_date else f"in {sig.days_to_buy_date}d", f"{sig.buy_date:%Y-%m-%d}", GREEN if sig.in_buy_date else GREY)
++_card(r2[2], "Euphoria threshold (adaptive)", f"MVRV > {p['mvrv_high']}",
++      f"peak MVRV {recal.get('peak_mvrv_series')} → next ≈ {recal.get('expected_next_peak_mvrv')}" if recal else "from data", AMBER)
++_card(r2[3], "Sentiment / positioning",
++      f"F&G {sent.get('fear_greed', '—')} {sent.get('fear_greed_label', '')}",
++      (f"funding {sent.get('funding_8h_pct')}%/8h → {sent.get('funding_read')} ({sent.get('funding_source')})" if sent.get("funding_8h_pct") is not None else "funding n/a")
++      + (f" · ETF 5d {etf['last5_sum_musd']:+.0f}M" if etf.get("ok") else ""),
++      RED if (sent.get("fear_greed") or 50) > 75 else GREEN if (sent.get("fear_greed") or 50) < 25 else GREY)
++
++# ------------------------------------------------------------ catalysts
++cal = R["calendar"]
++if cal.get("ok") and len(cal["upcoming"]):
++    st.markdown("**Catalysts next 3 weeks:** " + " · ".join(
++        f"{r.event} **{r.date}** (+{r.days}d)" for r in cal["upcoming"].itertuples()))
++
++# ------------------------------------------------------------ plan → verdict
++st.subheader("Your written plan")
++plan = _load_plan().get(asset, {})
++pc = st.columns([1, 1, 2, 1])
++mode = pc[0].radio("Position", ["cash", "long"], index=0 if plan.get("mode", "cash") == "cash" else 1, horizontal=True)
++if mode == "cash":
++    rebuy = pc[1].number_input("Rebuy on daily close >", 0.0, 1e7, float(plan.get("rebuy_close") or 0), 100.0)
++    ladder_txt = pc[2].text_input("Ladder buy levels (comma)", ",".join(str(int(x)) for x in plan.get("ladder", [])))
++    ladder = [float(x) for x in ladder_txt.replace(" ", "").split(",") if x]
++    new_plan = {"mode": "cash", "rebuy_close": rebuy or None, "ladder": ladder}
++else:
++    stop = pc[1].number_input("Stop", 0.0, 1e7, float(plan.get("stop") or 0), 100.0)
++    new_plan = {"mode": "long", "stop": stop or None}
++if pc[3].button("Save plan"):
++    allp = _load_plan(); allp[asset] = new_plan; _save_plan(allp); st.cache_data.clear(); st.success("Saved — agents will re-run with the new plan.")
++for line in cc.verdict(sig, new_plan):
++    st.markdown(f"• {line}")
++
++# ------------------------------------------------------------ analyst + auditor
++st.subheader("Agent notes")
++if R["analysis"]:
++    a, b = st.columns([3, 2])
++    a.markdown(f"<div style='border-left:4px solid {BLUE};padding:10px 14px;background:rgba(59,130,246,0.06);border-radius:6px'>"
++               f"<b>Analyst</b><br>{R['analysis'].replace(chr(10), '<br>')}</div>", unsafe_allow_html=True)
++    aud = R["audit"] or "(auditor unavailable)"
++    col = GREEN if aud.startswith("AUDIT PASS") else RED
++    b.markdown(f"<div style='border-left:4px solid {col};padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:6px'>"
++               f"<b>Auditor</b><br>{aud.replace(chr(10), '<br>')}</div>", unsafe_allow_html=True)
++else:
++    st.info("Set GROQ_API_KEY or GEMINI_API_KEY (free tiers) in Secrets to enable the analyst + auditor agents. "
++            "Everything above is deterministic and already live.")
++with st.expander("Context the agents were given (numbers only)"):
++    st.code(R["context"] or "—")
++
++# ------------------------------------------------------------ news
++news = R["news"]
++if not news.empty:
++    with st.expander(f"Tagged headlines — last 48h ({len(news)})", expanded=False):
++        st.dataframe(news[["time", "tags", "source", "title", "link"]], use_container_width=True, hide_index=True,
++                     column_config={"link": st.column_config.LinkColumn("link")})
++
++# ------------------------------------------------------------ chart
++st.subheader("Chart")
++cut = df.index[-1] - pd.Timedelta(days=365 * years)
++d = df[df.index >= cut]
++wma = df["price"].rolling(p["wma_days"]).mean()[df.index >= cut]
++fig = go.Figure()
++fig.add_trace(go.Scatter(x=d.index, y=d["price"], name=asset, line=dict(color="#e5e7eb", width=1.5)))
++fig.add_trace(go.Scatter(x=wma.index, y=wma, name="200-week MA", line=dict(color="#f59e0b", width=2)))
++fig.add_trace(go.Scatter(x=wma.index, y=wma * p["band1"], name="0.85x", line=dict(color="#f59e0b", width=1, dash="dot")))
++fig.add_trace(go.Scatter(x=wma.index, y=wma * p["band2"], name="0.66x", line=dict(color="#ef4444", width=1, dash="dot")))
++fig.add_trace(go.Scatter(x=d.index, y=np.where(d["price"] < wma, d["price"], np.nan), mode="markers", name="below 200WMA", marker=dict(color=GREEN, size=4)))
++fig.add_vrect(x0=sig.ath_date + pd.Timedelta(days=p["win_start"]), x1=sig.ath_date + pd.Timedelta(days=p["win_end"]),
++              fillcolor=BLUE, opacity=0.12, line_width=0, annotation_text="post-peak window")
++for hv in cc.HALVINGS + [sig.next_halving]:
++    if hv and cut <= hv <= d.index[-1] + pd.Timedelta(days=800):
++        fig.add_vline(x=hv, line=dict(color=GREY, dash="dot"), annotation_text="halving")
++        fig.add_vline(x=hv - pd.Timedelta(days=p["lead_days"]), line=dict(color=GREEN, dash="dash"), annotation_text="-500d")
++        fig.add_vline(x=hv + pd.Timedelta(days=p["lag_days"]), line=dict(color=RED, dash="dash"), annotation_text="+500d")
++        fig.add_vrect(x0=hv + pd.Timedelta(days=p["peak_start"]), x1=hv + pd.Timedelta(days=p["peak_end"]), fillcolor=RED, opacity=0.08, line_width=0)
++fig.add_hline(y=sig.resistance, line=dict(color=RED, width=1), annotation_text=f"R {sig.resistance:,.0f}")
++fig.add_hline(y=sig.support, line=dict(color=GREEN, width=1), annotation_text=f"S {sig.support:,.0f}")
++fig.update_layout(template="plotly_dark", height=520, yaxis_type="log", margin=dict(l=10, r=10, t=30, b=10), legend=dict(orientation="h", y=1.05))
++st.plotly_chart(fig, use_container_width=True)
++
++# ------------------------------------------------------------ snapshot history
++hist = ag.history()
++if len(hist) > 2:
++    with st.expander("Snapshot history (every agent run)"):
++        st.line_chart(hist.set_index("saved")[["ratio", "mvrv"]])
++        st.dataframe(hist.tail(30).iloc[::-1], use_container_width=True, hide_index=True)
++
++# ------------------------------------------------------------ evidence
++ev = R["evidence"]
++with st.expander("📚 Evidence — recomputed from the data this session", expanded=False):
++    if not ev:
++        st.info("No evidence available.")
++    else:
++        st.caption(f"Coin Metrics daily {ev['data_start']} → {ev['data_end']} ({ev['n_days']:,} days). "
++                   "'episodes' = separate runs of the condition — the honest sample size.")
++        t = ev["signals"].copy(); t["pct_positive"] = t["pct_positive"].round(0); t["median"] = t["median"].round(0)
++        st.dataframe(t, use_container_width=True, hide_index=True)
++        st.markdown("Buy-side signals have near-perfect forward records on ~20–27 episodes; the baseline row shows any day was "
++                    "positive ~75% of the time, so part of every record is drift. A fixed MVRV threshold alone is **not** a good "
++                    "exit; the post-halving peak window is the strongest exit evidence (3–4 episodes), sharpened by MVRV above "
++                    "the adaptive threshold inside it.")
++        if not ev["troughs"].empty:
++            st.dataframe(ev["troughs"], use_container_width=True, hide_index=True)
++        if not ev["halving"].empty:
++            st.dataframe(ev["halving"], use_container_width=True, hide_index=True)
++
++st.caption("Sources: Coin Metrics Community, CoinGecko, mempool.space, alternative.me, Binance/OKX public, Farside, crypto RSS. "
++           "Agents fail quietly and label their source; a missing card means a source was unreachable, not that the signal is off. Not financial advice.")
+diff --git a/stocks_portal/views/funnel.py b/stocks_portal/views/funnel.py
+new file mode 100644
+index 0000000..2c527f0
+--- /dev/null
++++ b/stocks_portal/views/funnel.py
+@@ -0,0 +1,139 @@
++"""
++🎣 Funnel — Pond → Fish → Focus → Review.
++
++Not the Weinstein "Stage 1-4" (that's price structure, see Discovery).
++This is the selection funnel: mechanical screen → scored shortlist with a
++correlation kill → written thesis + sizing → earnings-based review.
++"""
++
++import pandas as pd
++import streamlit as st
++
++from lib import ai_summary, canslim_minervini as cm, data, funnel, universe
++
++st.title("🎣 Funnel: Pond → Fish → Focus → Review")
++st.caption("Each step only eliminates. Nothing gets added back because you like it.")
++
++tab1, tab2, tab3, tab4, tab5 = st.tabs(["F1 Pond", "F2 Fish", "F3 Focus", "F4 Review", "📚 Evidence"])
++
++# ------------------------------------------------------------ F1
++with tab1:
++    ok, msg = cm.market_direction_ok()
++    st.markdown(f"**Regime gate:** {'🟢 ON' if ok else '🔴 OFF'} — {msg}")
++    if not ok:
++        st.warning("Regime OFF: breakouts fail far more often in index downtrends (Faber 2007). "
++                   "The pond still runs, but treat everything below as watch-list only.")
++    c1, c2, c3 = st.columns([2, 1, 1])
++    uni = c1.selectbox("Universe", ["Nasdaq 100", "S&P 500", "Both (~600, slow)"])
++    near = c2.slider("Within X% of 52-wk high", 5, 30, 20)
++    maxf = c3.slider("Max fundamentals lookups", 20, 150, 80, 10,
++                     help="yfinance statements are ~1s per ticker; survivors of the price gates only.")
++    tickers = (universe.get_nasdaq100() if uni.startswith("Nasdaq") else
++               universe.get_sp500() if uni.startswith("S&P") else universe.get_full_universe())
++    if st.button("Run pond screen", type="primary"):
++        st.session_state["pond"] = funnel.pond(tickers, near_high_pct=-near, max_fundamentals=maxf)
++    p = st.session_state.get("pond")
++    if p is not None and not p.empty:
++        st.markdown(f"**{len(p)}** passed the price gates (Stage 2 + near high + RS). Gates passed of 5:")
++        show = p[["ticker", "price", "gates_passed", "gate_trend", "gate_rs", "gate_accel", "gate_margin", "gate_rev",
++                  "rev_g_now", "rev_g_prev", "accel_pp", "gm_delta_pp", "rev_up_pct", "surprise_avg", "rs_vs_bench", "pct_from_52w_high"]]
++        st.dataframe(show, use_container_width=True, hide_index=True, height=420)
++        st.caption("rev_g = YoY revenue growth this quarter vs prior quarter (accel_pp = the change, in points). "
++                   "gm_delta = gross-margin change vs same quarter last year. rev_up = forward EPS estimate change (FMP) "
++                   "or, without an FMP key, avg earnings surprise of the last 4 reports.")
++    elif p is not None:
++        st.info("Nothing passed the price gates — that itself is information about the regime.")
++
++# ------------------------------------------------------------ F2
++with tab2:
++    p = st.session_state.get("pond")
++    if p is None or p.empty:
++        st.info("Run the pond first.")
++    else:
++        c1, c2, c3 = st.columns(3)
++        min_g = c1.slider("Min gates passed", 3, 5, 4)
++        top_n = c2.slider("Keep top N", 3, 10, 5)
++        ccut = c3.slider("Correlation kill threshold", 0.5, 0.9, 0.7, 0.05)
++        ranked, dropped = funnel.fish(p, min_gates=min_g, top_n=top_n, corr_cut=ccut)
++        st.session_state["fish"] = ranked
++        if ranked.empty:
++            st.warning("No name passes that many gates. Lower the bar or accept that the pond is empty right now.")
++        else:
++            st.markdown("**Scored shortlist** (score = mean percentile of acceleration, margin delta, revisions/beats, RS):")
++            st.dataframe(ranked[["ticker", "score", "gates_passed", "accel_pp", "gm_delta_pp", "rev_up_pct", "surprise_avg", "rs_vs_bench", "price"]],
++                         use_container_width=True, hide_index=True)
++            if not dropped.empty:
++                st.markdown("**Dropped by the correlation kill** (same trade as a higher-scored survivor):")
++                st.dataframe(dropped, use_container_width=True, hide_index=True)
++            ctx = "Funnel F2 shortlist:\n" + ranked[["ticker", "score", "gates_passed", "accel_pp", "gm_delta_pp", "rev_up_pct", "surprise_avg"]].to_string(index=False)
++            ai_summary.auto_summarize(
++                st, "You are a buy-side PM. For each ticker below, in one line each: what the numbers say, and the single "
++                    "question a Stage-3 analyst must answer before owning it. Then name which two are the SAME trade if any. "
++                    "Numbers only, no hype.\n\n" + ctx, page_kind="funnel",
++                fallback_text="Configure an AI key to get a shortlist briefing.")
++
++# ------------------------------------------------------------ F3
++with tab3:
++    fish_df = st.session_state.get("fish")
++    options = list(fish_df["ticker"]) if fish_df is not None and not fish_df.empty else []
++    tk = st.selectbox("Ticker", options + ["(type)"]) if options else None
++    if tk == "(type)" or not options:
++        tk = st.text_input("Ticker", value="").upper().strip()
++    if tk:
++        saved = funnel.load_theses().get(tk, {})
++        st.markdown("Answer in one sentence each. If you can't, that's the elimination.")
++        q1 = st.text_area("1 · What is the wave, and why does THIS company toll it?", saved.get("wave", ""), height=70)
++        q2 = st.text_area("2 · What number would prove me wrong? (invalidation — a metric, not a vibe)", saved.get("invalidation", ""), height=70)
++        q3 = st.text_area("3 · Why might the market be wrong about it right now?", saved.get("edge", ""), height=70)
++        st.markdown("**Sizing** — the stop decides the size, never the other way round.")
++        c = st.columns(4)
++        port = c[0].number_input("Portfolio $", 1000.0, 1e9, float(saved.get("portfolio", 100000)), 1000.0)
++        mloss = c[1].number_input("Max loss if stopped (% of portfolio)", 0.25, 10.0, float(saved.get("max_loss_pct", 1.0)), 0.25)
++        q = data.get_quote(tk) or {}
++        entry_default = float(saved.get("entry") or q.get("price") or q.get("last") or 0)
++        entry = c[2].number_input("Entry", 0.0, 1e6, entry_default, 0.01)
++        stop = c[3].number_input("Stop", 0.0, 1e6, float(saved.get("stop") or entry * 0.92 if entry else 0), 0.01)
++        sz = funnel.size_position(port, mloss, entry, stop)
++        if sz:
++            st.markdown(f"→ **{sz['shares']} shares** = ${sz['position_$']:,} ({sz['position_pct']}% of portfolio); "
++                        f"risk ${sz['risk_$']:,} at a {sz['stop_dist_pct']}% stop.")
++            if sz["position_pct"] > 15:
++                st.warning("Position > 15% of portfolio. A −50% drawdown in this name would cost > 7.5% of everything.")
++        if st.button("Save thesis"):
++            funnel.save_thesis(tk, {"wave": q1, "invalidation": q2, "edge": q3, "portfolio": port,
++                                    "max_loss_pct": mloss, "entry": entry, "stop": stop, "saved": str(pd.Timestamp.now().date())})
++            st.success(f"Saved thesis for {tk}.")
++        if not (q1.strip() and q2.strip() and q3.strip()):
++            st.info("Three blanks = not eligible yet.")
++
++# ------------------------------------------------------------ F4
++with tab4:
++    theses = funnel.load_theses()
++    if not theses:
++        st.info("No saved theses. Review runs on names saved in F3.")
++    else:
++        st.caption("Review on earnings, not on price. Exit on gate failure or your written invalidation — never on drawdown alone.")
++        rows = []
++        for tk, th in theses.items():
++            r = funnel.review(tk)
++            q = data.get_quote(tk) or {}
++            px = q.get("price") or q.get("last")
++            rows.append({"ticker": tk, "price": px, "entry": th.get("entry"), "stop": th.get("stop"),
++                         "vs_stop_%": round((px / th["stop"] - 1) * 100, 1) if px and th.get("stop") else None,
++                         "next_earnings": r.get("next_earnings"), "gates_ok/5": r.get("gates_ok"),
++                         "trend": r.get("gate_trend"), "accel": r.get("accel_ok"), "margin": r.get("margin_ok"), "revisions": r.get("rev_ok"),
++                         "invalidation": th.get("invalidation", "")[:80]})
++        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
++        st.markdown("**Rules:** gates_ok ≤ 2 → thesis broken, exit. Price below stop → exit, no negotiation. "
++                    "Earnings within 7 days → decide *now* whether you hold through it.")
++
++# ------------------------------------------------------------ Evidence
++with tab5:
++    st.markdown("Each gate's evidence source. These are literature citations, not statistics the app derived — "
++                "the app's own contribution is applying them mechanically and showing you the raw numbers.")
++    for k, g in funnel.GATES.items():
++        st.markdown(f"**{g['label']}**  \n<span style='color:#8a93a6'>{g['evidence']}</span>", unsafe_allow_html=True)
++    st.markdown("---\n**Honest limits:** yfinance statements can lag or mislabel line items; the revisions gate is weak "
++                "without an FMP key (surprise history is a proxy); the acceleration gate needs 5–6 clean quarters. "
++                "The funnel finds candidates that *resemble* past winners — survivorship bias is real (Bessembinder 2018), "
++                "which is why F3 sizing and F4 exits do half the work.")
+-- 
+2.43.0
+
