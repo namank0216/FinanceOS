@@ -30,7 +30,7 @@ NAV = {
     "EquityTerm": [
         st.Page("views/today.py",       title="Today",         icon="🎯", default=True),
         st.Page("views/macro.py",       title="Macro",         icon="🌍"),
-        st.Page("views/crypto.py",      title="Crypto Cycle",  icon="₿"),
+               st.Page("views/crypto.py",      title="Crypto Cycle",  icon="🪙"),
         st.Page("views/funnel.py",      title="Funnel",        icon="🎣"),
         st.Page("views/discovery.py",   title="Discovery",     icon="🔍"),
         st.Page("views/canslim.py",     title="CAN SLIM",      icon="🏆"),
