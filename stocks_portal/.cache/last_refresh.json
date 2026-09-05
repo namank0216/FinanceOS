@@ -1,0 +1,27 @@
+{
+ "BTC": {
+  "price": 79804.0,
+  "ratio": 1.232,
+  "buy": 1,
+  "sell": 0,
+  "changes": [],
+  "halving": "2028-04-07",
+  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
+  "audit": "The ANALYSIS contains no market interpretations or substantive assertions to evaluate, consisting solely of a system error message:\n\n* \"_(Gemini error 404: {\\n  \\\"error\\\": {\\n    \\\"code\\\": 404,\\n    \\\"message\\\": \\\"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_\" is an external system/API error message that is not supported by or present in the CONTEXT."
+ },
+ "ETH": {
+  "price": 2459.63,
+  "ratio": 0.985,
+  "buy": 2,
+  "sell": 0,
+  "changes": [
+   "Price vs 200WMA: False \u2192 True",
+   "Structure: RANGE \u2192 BULL (HH+HL)",
+   "Buy signals: 1 \u2192 2",
+   "Price moved -96.9% since last snapshot (2026-09-05)"
+  ],
+  "halving": "2028-04-07",
+  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
+  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
+ }
+}
