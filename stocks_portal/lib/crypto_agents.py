@@ -33,7 +33,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from . import ai_summary, crypto_cycle as cc
+from . import ai_summary, crypto_cycle as cc, model_panel as mp
 
 STATE_DIR = Path(__file__).parent.parent / ".cache"
 STATE_FILE = STATE_DIR / "crypto_state.json"
@@ -139,8 +139,11 @@ def _tag(title: str) -> list[str]:
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def news_agent(max_items: int = 40, hours: int = 48) -> pd.DataFrame:
+def news_agent(max_items: int = 40, hours: int = 48, asset_terms: tuple = ()) -> pd.DataFrame:
+    """Crypto RSS (direct) + the app's macro/government feeds (indirect), tagged.
+    asset_terms: coin name/symbol → rows mentioning them get the 'ASSET' tag."""
     rows = []; cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    terms = tuple(t.lower() for t in asset_terms if t and len(t) > 2)
     for src, url in CRYPTO_RSS:
         try:
             feed = feedparser.parse(url)
@@ -152,11 +155,27 @@ def news_agent(max_items: int = 40, hours: int = 48) -> pd.DataFrame:
                 if ts and ts < cutoff:
                     continue
                 title = re.sub(r"\s+", " ", e.get("title", "")).strip()
-                rows.append({"time": ts, "source": src, "title": title, "link": e.get("link", ""), "tags": ", ".join(_tag(title))})
+                tags = _tag(title)
+                if terms and any(t in title.lower() for t in terms):
+                    tags = ["ASSET"] + tags
+                rows.append({"time": ts, "source": src, "title": title, "link": e.get("link", ""), "tags": ", ".join(tags), "channel": "direct"})
         except Exception:
             continue
+    # indirect: macro / government / SEC feeds already in lib.data — keep only high-impact or tagged items
+    try:
+        from . import data as _data
+        mk = _data.get_market_news(max_per_feed=15)
+        for r in mk.itertuples():
+            title = str(getattr(r, "title", "")); tags = _tag(title)
+            hi = bool(getattr(r, "high_impact", False)) if hasattr(r, "high_impact") else False
+            if tags or hi:
+                ts = getattr(r, "ts", None)
+                rows.append({"time": ts, "source": getattr(r, "source", "macro"), "title": title, "link": getattr(r, "link", ""),
+                             "tags": ", ".join(tags or ["MACRO"]), "channel": "indirect"})
+    except Exception:
+        pass
     if not rows:
-        return pd.DataFrame(columns=["time", "source", "title", "link", "tags"])
+        return pd.DataFrame(columns=["time", "source", "title", "link", "tags", "channel"])
     df = pd.DataFrame(rows).drop_duplicates("title").sort_values("time", ascending=False)
     # catalyst-tagged first
     df["has_tag"] = df["tags"].str.len() > 0
@@ -328,7 +347,7 @@ def auditor_agent(analysis: str, context: str) -> str:
 # Orchestrator — runs on page launch
 # ============================================================
 @st.cache_data(ttl=900, show_spinner="Agents refreshing state…")
-def run_pipeline(asset: str = "BTC", params: dict | None = None, use_llm: bool = True) -> dict:
+def run_pipeline(asset: str = "BTC", params: dict | None = None, use_llm: bool = True, use_panel: bool = True) -> dict:
     p = {**cc.DEFAULTS, **(params or {})}
     halv = halving_agent()
     if halv.get("ok"):
@@ -339,7 +358,10 @@ def run_pipeline(asset: str = "BTC", params: dict | None = None, use_llm: bool =
         p["mvrv_high"] = recal["euphoria_threshold_adaptive"]
     live = cc.live_price(asset)
     sig = cc.compute_signals(df, asset, live, p) if not df.empty else None
-    sent = sentiment_agent(); cal = calendar_agent(); news = news_agent(); etf = etf_agent() if asset == "BTC" else _fail("etf", "BTC only")
+    meta_a = cc.ASSETS.get(asset, {})
+    sent = sentiment_agent(); cal = calendar_agent()
+    news = news_agent(asset_terms=(meta_a.get("name", ""), asset))
+    etf = etf_agent() if asset == "BTC" else _fail("etf", "BTC only")
     ev = cc.evidence(asset, p) if not df.empty else {}
 
     extras = {"halving": halv, "sentiment": sent, "etf": etf, "recal": recal,
@@ -372,7 +394,8 @@ def run_pipeline(asset: str = "BTC", params: dict | None = None, use_llm: bool =
         if use_llm:
             analysis = analyst_agent(context)
             audit = auditor_agent(analysis, context)
+    panel = mp.run_panel(context, asset, sig.price, do_audit=True) if (sig and use_llm and use_panel) else []
 
     return {"params": p, "sig": sig, "meta": meta, "evidence": ev, "halving": halv, "sentiment": sent, "etf": etf,
             "recal": recal, "calendar": cal, "news": news, "diff": diff, "context": context,
-            "analysis": analysis, "audit": audit, "df": df, "live": live}
+            "analysis": analysis, "audit": audit, "panel": panel, "df": df, "live": live}

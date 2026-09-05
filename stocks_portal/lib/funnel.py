@@ -28,6 +28,10 @@ import pandas as pd
 import streamlit as st
 
 from . import data, screener
+try:
+    from . import model_panel as mp
+except Exception:  # optional
+    mp = None
 
 THESIS_FILE = Path(__file__).parent.parent / ".cache" / "funnel_theses.json"
 
@@ -57,6 +61,21 @@ GATES = {
         "label": "Analysts chasing: estimates revised up / recent beats",
         "evidence": "Post-earnings-announcement drift (Ball & Brown 1968; Bernard & Thomas 1989). Markets underreact "
                     "to large beats and upward revisions for months.",
+    },
+    "quality": {
+        "label": "Quality: gross profitability (GP/assets) high, ROIC > 15%, FCF positive",
+        "evidence": "Novy-Marx (2013) 'The Other Side of Value: The Gross Profitability Premium'; Asness, Frazzini & Pedersen "
+                    "(2019) 'Quality Minus Junk'. Quality predicts returns mainly through future earnings growth.",
+    },
+    "dilution": {
+        "label": "Per-share discipline: share count not growing > 3%/yr; revenue & FCF growing PER SHARE",
+        "evidence": "Pontiff & Woodgate (2008) 'Share Issuance and Cross-Sectional Returns' — net issuers underperform; "
+                    "Research Affiliates on long-run revenue-per-share growth. A company can triple while owners get nothing.",
+    },
+    "incremental": {
+        "label": "Incremental economics: operating leverage (Δ operating income / Δ revenue) rising",
+        "evidence": "Practitioner (Mayer '100 Baggers', Phelps) + operating-leverage literature — the return on the NEXT dollar "
+                    "invested matters more than historical ROIC.",
     },
     "crash_risk": {
         "label": "Known failure mode: momentum crashes at regime turns",
@@ -88,11 +107,55 @@ def fundamentals(ticker: str) -> dict:
     """Revenue acceleration + gross-margin delta + (optional) revisions. Never raises."""
     out = {"ticker": ticker, "rev_g_now": np.nan, "rev_g_prev": np.nan, "accel_pp": np.nan,
            "gm_now": np.nan, "gm_prev": np.nan, "gm_delta_pp": np.nan,
-           "surprise_avg": np.nan, "rev_up_pct": np.nan, "accel_ok": False, "margin_ok": False, "rev_ok": None}
+           "surprise_avg": np.nan, "rev_up_pct": np.nan, "accel_ok": False, "margin_ok": False, "rev_ok": None,
+           "gp_assets": np.nan, "roic_pct": np.nan, "fcf_ttm": np.nan, "quality_ok": False,
+           "share_growth_pct": np.nan, "rev_ps_growth_pct": np.nan, "dilution_ok": None,
+           "incr_margin_pct": np.nan, "incremental_ok": None}
     fin = data.get_financials(ticker)
     qi = fin.get("income_q") if fin else None
     rev = _row(qi, ("Total Revenue", "Operating Revenue"))
     gp = _row(qi, ("Gross Profit",))
+    opi = _row(qi, ("Operating Income", "EBIT"))
+    # ---- quality / dilution / incremental (annual statements + info)
+    try:
+        ia = fin.get("income") if fin else None
+        ba = fin.get("balance") if fin else None
+        ca = fin.get("cashflow") if fin else None
+        gp_a = _row(ia, ("Gross Profit",)); ta = _row(ba, ("Total Assets",))
+        if gp_a is not None and ta is not None and len(gp_a) and len(ta):
+            out["gp_assets"] = round(float(gp_a.iloc[0] / ta.iloc[0]), 2)
+        ebit = _row(ia, ("EBIT", "Operating Income")); tax = _row(ia, ("Tax Rate For Calcs",))
+        debt = _row(ba, ("Total Debt",)); eq = _row(ba, ("Stockholders Equity", "Total Equity Gross Minority Interest"))
+        cash = _row(ba, ("Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments"))
+        if ebit is not None and eq is not None and len(ebit) and len(eq):
+            t = float(tax.iloc[0]) if tax is not None and len(tax) else 0.21
+            ic = float(eq.iloc[0]) + (float(debt.iloc[0]) if debt is not None and len(debt) else 0.0) - (float(cash.iloc[0]) if cash is not None and len(cash) else 0.0)
+            if ic > 0:
+                out["roic_pct"] = round(float(ebit.iloc[0]) * (1 - t) / ic * 100, 1)
+        fcf = _row(ca, ("Free Cash Flow",))
+        if fcf is not None and len(fcf):
+            out["fcf_ttm"] = float(fcf.iloc[0])
+        out["quality_ok"] = bool((out["gp_assets"] >= 0.25 if not np.isnan(out["gp_assets"]) else False) and
+                                 (out["roic_pct"] >= 15 if not np.isnan(out["roic_pct"]) else True) and
+                                 (out["fcf_ttm"] > 0 if not np.isnan(out["fcf_ttm"]) else True))
+        sh = _row(ia, ("Diluted Average Shares", "Basic Average Shares"))
+        if sh is not None and len(sh) >= 2 and sh.iloc[1] > 0:
+            out["share_growth_pct"] = round(float(sh.iloc[0] / sh.iloc[1] - 1) * 100, 1)
+        rev_a = _row(ia, ("Total Revenue", "Operating Revenue"))
+        if rev_a is not None and sh is not None and len(rev_a) >= 2 and len(sh) >= 2:
+            rps0 = float(rev_a.iloc[0] / sh.iloc[0]); rps1 = float(rev_a.iloc[1] / sh.iloc[1])
+            if rps1 > 0:
+                out["rev_ps_growth_pct"] = round((rps0 / rps1 - 1) * 100, 1)
+        if not np.isnan(out["share_growth_pct"]):
+            out["dilution_ok"] = bool(out["share_growth_pct"] <= 3.0 and (np.isnan(out["rev_ps_growth_pct"]) or out["rev_ps_growth_pct"] > 0))
+        if rev is not None and opi is not None and len(rev) >= 5 and len(opi) >= 5:
+            d_rev = float(rev.iloc[0] - rev.iloc[4]); d_op = float(opi.iloc[0] - opi.iloc[4])
+            if abs(d_rev) > 0:
+                out["incr_margin_pct"] = round(d_op / d_rev * 100, 1)
+                om_prev = float(opi.iloc[4] / rev.iloc[4]) * 100 if rev.iloc[4] else np.nan
+                out["incremental_ok"] = bool(d_rev > 0 and out["incr_margin_pct"] > om_prev) if not np.isnan(om_prev) else None
+    except Exception:
+        pass
     try:
         if rev is not None and len(rev) >= 5:
             g_now = float(rev.iloc[0] / rev.iloc[4] - 1) * 100
@@ -143,8 +206,13 @@ def pond(tickers: list[str], bench: str = "SPY", near_high_pct: float = -20.0,
     out = surv.merge(f, on="ticker", how="left")
     out["gate_accel"] = out["accel_ok"].fillna(False).astype(bool)
     out["gate_margin"] = out["margin_ok"].fillna(False).astype(bool)
-    out["gate_rev"] = out["rev_ok"].map(lambda v: bool(v) if v is not None and not (isinstance(v, float) and np.isnan(v)) else False)
-    out["gates_passed"] = out[["gate_trend", "gate_rs", "gate_accel", "gate_margin", "gate_rev"]].sum(axis=1)
+    _b = lambda v: bool(v) if v is not None and not (isinstance(v, float) and np.isnan(v)) else False
+    out["gate_rev"] = out["rev_ok"].map(_b)
+    out["gate_quality"] = out["quality_ok"].fillna(False).astype(bool)
+    out["gate_dilution"] = out["dilution_ok"].map(_b)
+    out["gate_incremental"] = out["incremental_ok"].map(_b)
+    GATE_COLS = ["gate_trend", "gate_rs", "gate_accel", "gate_margin", "gate_rev", "gate_quality", "gate_dilution", "gate_incremental"]
+    out["gates_passed"] = out[GATE_COLS].sum(axis=1)
     return out.sort_values(["gates_passed", "fast_composite"], ascending=False).reset_index(drop=True)
 
 
@@ -155,7 +223,7 @@ def _pct_rank(s: pd.Series) -> pd.Series:
     return s.rank(pct=True).fillna(0.0)
 
 
-def fish(p: pd.DataFrame, min_gates: int = 4, top_n: int = 5, corr_cut: float = 0.70,
+def fish(p: pd.DataFrame, min_gates: int = 5, top_n: int = 5, corr_cut: float = 0.70,
          lookback: str = "6mo") -> tuple[pd.DataFrame, pd.DataFrame]:
     """Returns (ranked survivors, dropped-by-correlation). Score = mean pct-rank of
     acceleration, margin delta, revisions/beats, and relative strength."""
@@ -165,8 +233,9 @@ def fish(p: pd.DataFrame, min_gates: int = 4, top_n: int = 5, corr_cut: float = 
     if f.empty:
         return f, pd.DataFrame()
     rev_metric = f["rev_up_pct"].where(f["rev_up_pct"].notna(), f["surprise_avg"])
-    f["score"] = (_pct_rank(f["accel_pp"]) + _pct_rank(f["gm_delta_pp"]) +
-                  _pct_rank(rev_metric) + _pct_rank(f["rs_vs_bench"])) / 4 * 100
+    f["score"] = (_pct_rank(f["accel_pp"]) + _pct_rank(f["gm_delta_pp"]) + _pct_rank(rev_metric) +
+                  _pct_rank(f["rs_vs_bench"]) + _pct_rank(f["gp_assets"]) + _pct_rank(f["incr_margin_pct"]) -
+                  _pct_rank(f["share_growth_pct"].fillna(0))) / 6 * 100
     f = f.sort_values("score", ascending=False).reset_index(drop=True)
 
     # correlation kill: same trade → keep the higher score
@@ -243,4 +312,103 @@ def review(ticker: str) -> dict:
         trend_ok = bool(last["stage"] == "STAGE 2")
         rs_ok = bool(df["close"].iloc[-1] / df["close"].iloc[-252] - 1 > 0) if len(df) >= 252 else None
     return {**f, "next_earnings": nxt, "gate_trend": trend_ok, "gate_rs": rs_ok,
-            "gates_ok": sum(bool(x) for x in (trend_ok, rs_ok, f["accel_ok"], f["margin_ok"], f["rev_ok"]))}
+            "gates_ok": sum(bool(x) for x in (trend_ok, rs_ok, f["accel_ok"], f["margin_ok"], f["rev_ok"], f["quality_ok"], f["dilution_ok"], f["incremental_ok"]))}
+
+
+# ============================================================
+# F3 — FOCUS (AI): fact pack → thesis → audit → scenarios
+# ============================================================
+def fact_pack(ticker: str) -> dict:
+    """Everything the agents need, fetched — the user shouldn't type what an API knows."""
+    fp = {"ticker": ticker, "fund": fundamentals(ticker)}
+    try:
+        fp["quote"] = data.get_quote(ticker) or {}
+    except Exception:
+        fp["quote"] = {}
+    try:
+        info = data.get_info(ticker) or {}
+        fp["info"] = {k: info.get(k) for k in ("longName", "sector", "industry", "marketCap", "trailingPE", "forwardPE",
+                                              "priceToSalesTrailing12Months", "revenueGrowth", "grossMargins", "operatingMargins",
+                                              "returnOnEquity", "debtToEquity", "heldPercentInsiders", "heldPercentInstitutions",
+                                              "targetMeanPrice", "recommendationKey", "numberOfAnalystOpinions", "longBusinessSummary")}
+        if fp["info"].get("longBusinessSummary"):
+            fp["info"]["longBusinessSummary"] = fp["info"]["longBusinessSummary"][:700]
+    except Exception:
+        fp["info"] = {}
+    try:
+        n = data.fh_news(ticker, days=14) if data.has_finnhub() else pd.DataFrame()
+        fp["news"] = n["headline"].head(10).tolist() if not n.empty and "headline" in n else []
+    except Exception:
+        fp["news"] = []
+    try:
+        ed = data.get_earnings_dates(ticker)
+        fut = ed[ed.index > pd.Timestamp.now(tz=ed.index.tz)] if ed is not None and not ed.empty else pd.DataFrame()
+        fp["next_earnings"] = str(fut.index.min().date()) if not fut.empty else None
+    except Exception:
+        fp["next_earnings"] = None
+    try:
+        h = data.get_history(ticker, period="6mo")
+        if not h.empty:
+            tr = (h["high"] - h["low"]).rolling(14).mean().iloc[-1]
+            fp["atr14"] = float(tr); fp["price"] = float(h["close"].iloc[-1])
+            fp["high_52w"] = float(data.get_history(ticker, period="1y")["high"].max())
+    except Exception:
+        pass
+    return fp
+
+
+THESIS_PROMPT = """You are a buy-side analyst. Using ONLY the FACTS below, write a Stage-3 thesis card for {ticker}.
+Return STRICT JSON with these keys and nothing else:
+{{
+ "wave": "<one sentence: the structural wave and why THIS company tolls it>",
+ "invalidation": "<one sentence naming a specific metric/threshold that would prove the thesis wrong>",
+ "edge": "<one sentence: why the market may be mispricing it right now>",
+ "same_trade_as": "<tickers that are the same underlying bet, or 'none'>",
+ "bear": {{"rev_cagr_pct": <num>, "op_margin_pct": <num>, "terminal_multiple": <num>}},
+ "base": {{"rev_cagr_pct": <num>, "op_margin_pct": <num>, "terminal_multiple": <num>}},
+ "bull": {{"rev_cagr_pct": <num>, "op_margin_pct": <num>, "terminal_multiple": <num>}},
+ "stop_rationale": "<one sentence: where a stop belongs and why>",
+ "gate_flags": ["<any gate the facts say is weak or failing>"]
+}}
+Numbers must be traceable to FACTS or clearly labelled assumptions inside the sentence. No hype.
+
+FACTS:
+{facts}
+"""
+
+
+def ai_thesis(ticker: str, fp: dict | None = None) -> dict:
+    """Agent-written thesis card (+ audit). Returns {} if no LLM key."""
+    if mp is None:
+        return {}
+    fp = fp or fact_pack(ticker)
+    facts = json.dumps({k: v for k, v in fp.items() if k != "ticker"}, default=str)[:6000]
+    prov = None
+    for cand in ("gemini", "groq", "openrouter", "anthropic"):
+        if mp._key(mp.PROVIDERS[cand]["key"]):
+            prov = cand; break
+    if not prov:
+        return {}
+    model = {"gemini": "gemini-2.5-flash", "groq": "openai/gpt-oss-120b", "openrouter": "nvidia/nemotron-3-ultra-550b-a55b:free",
+             "anthropic": "claude-haiku-4-5-20251001"}[prov]
+    try:
+        text, lat = mp._chat(prov, model, THESIS_PROMPT.format(ticker=ticker, facts=facts), max_tokens=900)
+        j = json.loads(text[text.find("{"): text.rfind("}") + 1])
+        j["_model"] = f"{prov}:{model}"; j["_latency_s"] = lat
+        aud = mp.audit(json.dumps(j), facts)
+        j["_audit"] = aud.get("audit", ""); j["_audit_pass"] = aud.get("audit_pass")
+        return j
+    except Exception as e:
+        return {"_error": str(e)[:160]}
+
+
+def scenario_returns(market_cap: float, revenue_ttm: float, years: int, scen: dict) -> dict:
+    """Expected annual return under a scenario: future FCF-proxy × multiple vs today's cap."""
+    try:
+        fut_rev = revenue_ttm * (1 + scen["rev_cagr_pct"] / 100) ** years
+        fut_op = fut_rev * scen["op_margin_pct"] / 100
+        fut_cap = fut_op * scen["terminal_multiple"]
+        cagr = (fut_cap / market_cap) ** (1 / years) - 1
+        return {"future_cap": round(fut_cap), "multiple_of_today": round(fut_cap / market_cap, 2), "cagr_pct": round(cagr * 100, 1)}
+    except Exception:
+        return {}

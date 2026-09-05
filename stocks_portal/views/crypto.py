@@ -21,7 +21,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from lib import crypto_agents as ag, crypto_cycle as cc
+from lib import crypto_agents as ag, crypto_cycle as cc, model_panel as mp
 
 st.title("₿ Crypto Cycle")
 PLAN_FILE = Path(__file__).parent.parent / ".cache" / "crypto_plan.json"
@@ -52,18 +52,76 @@ def _card(col, label, value, sub="", color=GREY):
 
 
 # ------------------------------------------------------------ controls + pipeline
-top = st.columns([1, 2, 1, 1])
-asset = top[0].radio("Asset", ["BTC", "ETH"], horizontal=True)
-years = top[1].slider("Chart window (years)", 1, 12, 4)
-use_llm = top[2].toggle("LLM agents", value=True, help="Analyst + auditor via the provider in Secrets")
-if top[3].button("Force refresh"):
+top = st.columns([1.3, 1.6, 1.4, 1, 0.8])
+pick = top[0].radio("Asset", ["BTC", "ETH", "SOL", "XRP", "HYPE", "Other…"], horizontal=True)
+asset = pick
+if pick == "Other…":
+    q = top[1].text_input("Search any coin (name or symbol)", st.session_state.get("coin_query", ""), placeholder="e.g. hyperliquid, sui, link")
+    st.session_state["coin_query"] = q
+    hits = cc.search_coins(q) if q else []
+    if hits:
+        labels = [f"{h['symbol']} · {h['name']}" + (f" (#{h['rank']})" if h.get("rank") else "") for h in hits]
+        ch = top[1].selectbox("Match", labels, index=0)
+        h = hits[labels.index(ch)]
+        asset = cc.register_asset(h["symbol"], h["id"], h["name"])
+    elif q:
+        top[1].caption("No CoinGecko match."); st.stop()
+    else:
+        st.info("Type a coin name or symbol above."); st.stop()
+else:
+    top[1].caption(f"{cc.ASSETS[asset]['name']} · Coin Metrics + CoinGecko")
+years = top[2].slider("Chart window (years)", 1, 12, 4)
+use_llm = top[3].toggle("LLM agents", value=True, help="Analyst + auditor, plus the multi-model panel below")
+if top[4].button("Force refresh"):
     st.cache_data.clear()
 
-R = ag.run_pipeline(asset, use_llm=use_llm)
+main, side = st.columns([3.2, 1.25])
+
+R = ag.run_pipeline(asset, use_llm=use_llm, use_panel=st.session_state.get("use_panel", True))
 sig, p, meta = R["sig"], R["params"], R["meta"]
 if sig is None:
-    st.error("History unavailable (GitHub/CoinGecko unreachable). Try Force refresh."); st.stop()
+    st.error("Not enough history for this asset (needs ~120 days) or data sources unreachable. Try Force refresh."); st.stop()
 df = R["df"]
+for n in sig.notes:
+    st.caption("ℹ️ " + n)
+
+# ------------------------------------------------------------ SIDE PANEL: news that moves this asset
+with side:
+    st.markdown("#### 📰 What's moving it")
+    news = R["news"]
+    if news is None or news.empty:
+        st.caption("No headlines fetched (feeds unreachable).")
+    else:
+        flt = st.multiselect("Filter", ["ASSET", "MACRO", "ETF/FLOWS", "REGULATION", "LIQUIDATION/LEVERAGE", "ON-CHAIN", "SECURITY/RISK"],
+                             default=[], label_visibility="collapsed", placeholder="All tags")
+        nn = news if not flt else news[news["tags"].fillna("").apply(lambda t: any(f in t for f in flt))]
+        if "channel" not in nn.columns:
+            nn = nn.assign(channel="direct")
+        direct = nn[nn["channel"] == "direct"].head(14)
+        indirect = nn[nn["channel"] == "indirect"].head(8)
+        def _render(dfn, hdr):
+            if dfn.empty:
+                return
+            st.markdown(f"<div style='font-size:12px;color:{GREY};margin:6px 0 2px'>{hdr}</div>", unsafe_allow_html=True)
+            for r in dfn.itertuples():
+                tg = f"<span style='color:{AMBER};font-size:11px'>{r.tags}</span> " if r.tags else ""
+                ts = f"<span style='color:{GREY};font-size:11px'>{pd.to_datetime(r.time).strftime('%d %b %H:%M') if pd.notna(r.time) else ''}</span>"
+                st.markdown(f"<div style='font-size:13px;line-height:1.3;margin:0 0 8px'>{tg}<a href='{r.link}' target='_blank' style='text-decoration:none'>{r.title}</a><br>{ts} · {r.source}</div>", unsafe_allow_html=True)
+        _render(direct, "DIRECT — crypto desks")
+        _render(indirect, "INDIRECT — macro / Fed / SEC")
+    cal = R["calendar"]
+    if cal.get("ok") and len(cal["upcoming"]):
+        st.markdown(f"<div style='font-size:12px;color:{GREY};margin:10px 0 2px'>DATED CATALYSTS</div>", unsafe_allow_html=True)
+        for r in cal["upcoming"].itertuples():
+            st.markdown(f"<div style='font-size:13px'>• {r.event} — <b>{r.date}</b> (+{r.days}d)</div>", unsafe_allow_html=True)
+    sent = R["sentiment"]
+    if sent.get("ok"):
+        st.markdown(f"<div style='font-size:12px;color:{GREY};margin:10px 0 2px'>POSITIONING</div><div style='font-size:13px'>"
+                    f"Fear&Greed <b>{sent.get('fear_greed','—')}</b> {sent.get('fear_greed_label','')} (7d ago {sent.get('fear_greed_7d_ago','—')})<br>"
+                    + (f"Funding {sent.get('funding_8h_pct')}%/8h → {sent.get('funding_read')}" if sent.get('funding_8h_pct') is not None else "Funding n/a")
+                    + "</div>", unsafe_allow_html=True)
+
+main.__enter__()
 
 # ------------------------------------------------------------ live header (60s)
 @st.fragment(run_every="60s")
@@ -73,8 +131,8 @@ def live_header():
     st.session_state["crypto_sig"] = s2
     c = st.columns(5)
     chg = live.get("change_24h", np.nan)
-    c[0].metric(f"{asset} · {live['source']}", f"${s2.price:,.0f}", f"{chg:+.2f}% 24h" if not np.isnan(chg) else None)
-    c[1].metric("vs 200-week MA", f"{s2.ratio:.2f}x", f"MA ${s2.wma200:,.0f}", delta_color="off")
+    c[0].metric(f"{asset} · {live['source']}", f"${s2.price:,.4g}" if s2.price < 100 else f"${s2.price:,.0f}", f"{chg:+.2f}% 24h" if not np.isnan(chg) else None)
+    c[1].metric("vs 200-week MA", f"{s2.ratio:.2f}x" if not np.isnan(s2.ratio) else "n/a", f"MA ${s2.wma200:,.4g}" if not np.isnan(s2.wma200) else "short history", delta_color="off")
     c[2].metric("Days since ATH", f"{s2.days_since_ath}d", "IN BOTTOM WINDOW" if s2.in_bottom_window else f"window {p['win_start']}-{p['win_end']}d", delta_color="off")
     c[3].metric("MVRV (live-scaled)", f"{s2.mvrv:.2f}" if not np.isnan(s2.mvrv) else "n/a", s2.mvrv_state, delta_color="off")
     c[4].metric("Signals", f"BUY {s2.buy_count}/3", f"SELL {s2.sell_count}/2", delta_color="off")
@@ -94,8 +152,8 @@ elif not diff.get("first_run"):
 
 # ------------------------------------------------------------ signal cards
 r1 = st.columns(4)
-_card(r1[0], "1 · Price vs 200WMA", "BELOW ✅" if sig.below_wma else "above",
-      f"0.85x ${sig.band1_lvl:,.0f} · 0.66x ${sig.band2_lvl:,.0f}", GREEN if sig.below_wma else GREY)
+_card(r1[0], "1 · Price vs 200WMA", "n/a (short history)" if np.isnan(sig.wma200) else "BELOW ✅" if sig.below_wma else "above",
+      f"0.85x ${sig.band1_lvl:,.4g} · 0.66x ${sig.band2_lvl:,.4g}" if not np.isnan(sig.wma200) else "needs 200 weeks of data", GREEN if sig.below_wma else GREY)
 _card(r1[1], "2 · Post-peak clock", "IN WINDOW ✅" if sig.in_bottom_window else f"day {sig.days_since_ath}",
       f"ATH ${sig.ath:,.0f} {sig.ath_date:%Y-%m-%d} · proj. trough {sig.projected_bottom:%Y-%m-%d}", GREEN if sig.in_bottom_window else GREY)
 _card(r1[2], "3 · MVRV", sig.mvrv_state, f"{sig.mvrv:.2f} · realized ${sig.realized_price:,.0f}" if not np.isnan(sig.mvrv) else "no on-chain",
@@ -118,11 +176,6 @@ _card(r2[3], "Sentiment / positioning",
       + (f" · ETF 5d {etf['last5_sum_musd']:+.0f}M" if etf.get("ok") else ""),
       RED if (sent.get("fear_greed") or 50) > 75 else GREEN if (sent.get("fear_greed") or 50) < 25 else GREY)
 
-# ------------------------------------------------------------ catalysts
-cal = R["calendar"]
-if cal.get("ok") and len(cal["upcoming"]):
-    st.markdown("**Catalysts next 3 weeks:** " + " · ".join(
-        f"{r.event} **{r.date}** (+{r.days}d)" for r in cal["upcoming"].itertuples()))
 
 # ------------------------------------------------------------ plan → verdict
 st.subheader("Your written plan")
@@ -158,12 +211,41 @@ else:
 with st.expander("Context the agents were given (numbers only)"):
     st.code(R["context"] or "—")
 
-# ------------------------------------------------------------ news
-news = R["news"]
-if not news.empty:
-    with st.expander(f"Tagged headlines — last 48h ({len(news)})", expanded=False):
-        st.dataframe(news[["time", "tags", "source", "title", "link"]], use_container_width=True, hide_index=True,
-                     column_config={"link": st.column_config.LinkColumn("link")})
+# ------------------------------------------------------------ multi-model panel
+st.subheader("Model panel — same numbers, every model, scored over time")
+st.session_state["use_panel"] = st.toggle("Run the panel on refresh", value=st.session_state.get("use_panel", True))
+panel = R.get("panel") or []
+if panel:
+    cols = st.columns(min(3, len(panel)))
+    for i, r in enumerate(panel):
+        with cols[i % len(cols)]:
+            ok = r.get("audit_pass"); col = GREEN if ok else RED if ok is False else GREY
+            head = f"<b>{r['label']}</b> · {r['latency_s']}s · bias {r.get('bias_7d')} c{r.get('conviction')} · key {r.get('key_level')}"
+            body = (r["note"] or f"error: {r['error']}").replace(chr(10), "<br>")
+            st.markdown(f"<div style='border-left:4px solid {col};padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:6px;font-size:13px;max-height:420px;overflow:auto'>{head}<br><br>{body}</div>", unsafe_allow_html=True)
+            if r.get("audit"):
+                with st.expander("auditor"):
+                    st.write(r["audit"])
+else:
+    st.info("No panel notes: add keys (GROQ_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY …) in Secrets and enable models in the roster below.")
+
+lb = mp.score(df["price"], asset)
+if not lb.empty:
+    st.markdown("**Leaderboard** — accuracy_7d = realized 7-day direction vs each note's bias (flat = |move| < 2%); audit_pass = claims traceable to context.")
+    st.dataframe(lb, use_container_width=True, hide_index=True)
+    st.caption("Needs ~30+ scored notes per model before differences mean anything; daily cron runs build this even without visits.")
+
+with st.expander("Model roster (free IDs rotate — a broken ID only errors its own card)"):
+    roster = mp.load_roster()
+    rdf = pd.DataFrame(roster)
+    keys = {p: bool(mp._key(v["key"])) for p, v in mp.PROVIDERS.items()}
+    st.caption("Keys present: " + ", ".join(f"{k}={'✅' if v else '—'}" for k, v in keys.items()))
+    edited = st.data_editor(rdf, num_rows="dynamic", use_container_width=True, hide_index=True)
+    if st.button("Save roster"):
+        mp.save_roster(edited.to_dict("records")); st.cache_data.clear(); st.success("Roster saved — refresh to run.")
+    if st.button("List OpenRouter ':free' models now"):
+        st.write(mp.openrouter_free_models() or "unreachable")
+
 
 # ------------------------------------------------------------ chart
 st.subheader("Chart")
@@ -172,10 +254,11 @@ d = df[df.index >= cut]
 wma = df["price"].rolling(p["wma_days"]).mean()[df.index >= cut]
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=d.index, y=d["price"], name=asset, line=dict(color="#e5e7eb", width=1.5)))
-fig.add_trace(go.Scatter(x=wma.index, y=wma, name="200-week MA", line=dict(color="#f59e0b", width=2)))
-fig.add_trace(go.Scatter(x=wma.index, y=wma * p["band1"], name="0.85x", line=dict(color="#f59e0b", width=1, dash="dot")))
-fig.add_trace(go.Scatter(x=wma.index, y=wma * p["band2"], name="0.66x", line=dict(color="#ef4444", width=1, dash="dot")))
-fig.add_trace(go.Scatter(x=d.index, y=np.where(d["price"] < wma, d["price"], np.nan), mode="markers", name="below 200WMA", marker=dict(color=GREEN, size=4)))
+if wma.notna().any():
+    fig.add_trace(go.Scatter(x=wma.index, y=wma, name="200-week MA", line=dict(color="#f59e0b", width=2)))
+    fig.add_trace(go.Scatter(x=wma.index, y=wma * p["band1"], name="0.85x", line=dict(color="#f59e0b", width=1, dash="dot")))
+    fig.add_trace(go.Scatter(x=wma.index, y=wma * p["band2"], name="0.66x", line=dict(color="#ef4444", width=1, dash="dot")))
+    fig.add_trace(go.Scatter(x=d.index, y=np.where(d["price"] < wma, d["price"], np.nan), mode="markers", name="below 200WMA", marker=dict(color=GREEN, size=4)))
 fig.add_vrect(x0=sig.ath_date + pd.Timedelta(days=p["win_start"]), x1=sig.ath_date + pd.Timedelta(days=p["win_end"]),
               fillcolor=BLUE, opacity=0.12, line_width=0, annotation_text="post-peak window")
 for hv in cc.HALVINGS + [sig.next_halving]:
@@ -217,3 +300,5 @@ with st.expander("📚 Evidence — recomputed from the data this session", expa
 
 st.caption("Sources: Coin Metrics Community, CoinGecko, mempool.space, alternative.me, Binance/OKX public, Farside, crypto RSS. "
            "Agents fail quietly and label their source; a missing card means a source was unreachable, not that the signal is off. Not financial advice.")
+
+main.__exit__(None, None, None)

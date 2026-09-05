@@ -45,9 +45,33 @@ CG_URL = "https://api.coingecko.com/api/v3/simple/price"
 CB_URL = "https://api.coinbase.com/v2/prices/{pair}/spot"
 
 ASSETS = {
-    "BTC": {"cm": "btc", "cg": "bitcoin",  "cb": "BTC-USD", "halvings": True},
-    "ETH": {"cm": "eth", "cg": "ethereum", "cb": "ETH-USD", "halvings": False},
+    "BTC": {"cm": "btc", "cg": "bitcoin",  "cb": "BTC-USD", "name": "Bitcoin",  "halvings": True},
+    "ETH": {"cm": "eth", "cg": "ethereum", "cb": "ETH-USD", "name": "Ethereum", "halvings": False},
+    "SOL": {"cm": "sol", "cg": "solana",   "cb": "SOL-USD", "name": "Solana",   "halvings": False},
+    "XRP": {"cm": "xrp", "cg": "ripple",   "cb": "XRP-USD", "name": "XRP",      "halvings": False},
+    "HYPE": {"cm": "hype", "cg": "hyperliquid", "cb": "HYPE-USD", "name": "Hyperliquid", "halvings": False},
 }
+
+
+def register_asset(symbol: str, cg_id: str, name: str = "", cm_slug: str | None = None) -> str:
+    """Add a coin to the registry at runtime (from the search bar). Returns the key."""
+    key = symbol.upper()
+    ASSETS[key] = {"cm": (cm_slug or symbol.lower()), "cg": cg_id, "cb": f"{key}-USD", "name": name or key, "halvings": False}
+    return key
+
+
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def search_coins(query: str) -> list[dict]:
+    """CoinGecko /search → [{symbol, id, name, rank}] best matches (free, no key)."""
+    q = (query or "").strip()
+    if not q:
+        return []
+    try:
+        j = requests.get("https://api.coingecko.com/api/v3/search", params={"query": q}, timeout=10).json()
+        coins = j.get("coins", [])[:8]
+        return [{"symbol": c["symbol"].upper(), "id": c["id"], "name": c["name"], "rank": c.get("market_cap_rank")} for c in coins]
+    except Exception:
+        return []
 
 # Confirmed halvings + projected next (block 1,050,000). Update the projection
 # from a block-height countdown as it nears; it drifts by weeks with hashrate.
@@ -75,12 +99,25 @@ DEFAULTS = dict(
 def load_history(asset: str = "BTC") -> pd.DataFrame:
     """Daily history with price, mvrv, realized_price. Empty DF on failure."""
     meta = ASSETS[asset]
+    raw = pd.DataFrame()
     try:
         r = requests.get(CM_URL.format(asset=meta["cm"]), timeout=30)
-        r.raise_for_status()
-        raw = pd.read_csv(io.StringIO(r.text), low_memory=False)
+        if r.status_code == 200 and "PriceUSD" in r.text[:5000]:
+            raw = pd.read_csv(io.StringIO(r.text), low_memory=False)
     except Exception:
-        return pd.DataFrame()
+        raw = pd.DataFrame()
+    if raw.empty or "PriceUSD" not in raw.columns:
+        # CoinGecko full daily history (no on-chain metrics)
+        try:
+            r = requests.get(f"https://api.coingecko.com/api/v3/coins/{meta['cg']}/market_chart",
+                             params={"vs_currency": "usd", "days": "max", "interval": "daily"}, timeout=20)
+            pts = r.json()["prices"]
+            ser = pd.Series({pd.to_datetime(t, unit="ms").normalize(): float(px) for t, px in pts})
+            ser = ser[~ser.index.duplicated(keep="last")].sort_index()
+            df = pd.DataFrame({"price": ser, "mvrv": np.nan, "realized_price": np.nan})
+            return df.asfreq("D").ffill()
+        except Exception:
+            return pd.DataFrame()
 
     cols = {"time": "time", "PriceUSD": "price"}
     for c in ("CapMVRVCur", "CapRealUSD", "SplyCur"):
@@ -211,7 +248,7 @@ def _pivots(high: pd.Series, low: pd.Series, n: int):
 
 def compute_signals(df: pd.DataFrame, asset: str = "BTC", live: dict | None = None,
                     p: dict | None = None) -> Signals | None:
-    if df is None or df.empty or len(df) < 1500:
+    if df is None or df.empty or len(df) < 120:
         return None
     p = {**DEFAULTS, **(p or {})}
     live = live or {}
@@ -220,8 +257,8 @@ def compute_signals(df: pd.DataFrame, asset: str = "BTC", live: dict | None = No
 
     s = df["price"]
     wma = s.rolling(p["wma_days"]).mean()
-    wma200 = float(wma.iloc[-1])
-    ratio = price / wma200
+    wma200 = float(wma.iloc[-1]) if len(s) >= p["wma_days"] else np.nan
+    ratio = price / wma200 if not np.isnan(wma200) else np.nan
 
     ath = float(s.max()); ath_date = s.idxmax().to_pydatetime()
     if price > ath:
@@ -260,7 +297,7 @@ def compute_signals(df: pd.DataFrame, asset: str = "BTC", live: dict | None = No
         hh, hl = last_ph > prev_ph, last_pl > prev_pl
         structure = "BULL (HH+HL)" if hh and hl else "BEAR (LH+LL)" if not hh and not hl else "RANGE"
 
-    below = price < wma200
+    below = (not np.isnan(wma200)) and price < wma200
     capit = mvrv_state == "CAPITULATION"
     euph = mvrv_state == "ELEVATED"
 
@@ -306,6 +343,10 @@ def compute_signals(df: pd.DataFrame, asset: str = "BTC", live: dict | None = No
 
     if src.startswith("Coin Metrics"):
         sig.notes.append("Live price unavailable — using last daily close.")
+    if np.isnan(wma200):
+        sig.notes.append(f"Only {len(s)} days of history — 200-week MA needs {p['wma_days']}; signal 1 unavailable.")
+    if np.isnan(mvrv):
+        sig.notes.append("No on-chain MVRV for this asset (Coin Metrics community feed lacks it) — signal 3 unavailable.")
     return sig
 
 
@@ -331,9 +372,9 @@ def _fwd_stats(mask: pd.Series, s: pd.Series, hold: int) -> dict:
 def evidence(asset: str = "BTC", p: dict | None = None) -> dict:
     """Backtests behind every signal, with episode counts. Keys -> DataFrame/rows."""
     df = load_history(asset)
-    if df.empty or len(df) < 1500:
-        return {}
     p = {**DEFAULTS, **(p or {})}
+    if df.empty or len(df) < p["wma_days"] + 400:
+        return {}
     s = df["price"]; mvrv = df["mvrv"]
     wma = s.rolling(p["wma_days"]).mean()
 
@@ -420,17 +461,20 @@ def verdict(sig: Signals, plan: dict) -> list[str]:
         if plan.get("stop"):
             out.append(f"STOP: {plan['stop']:,.0f} ({px/plan['stop']-1:+.1%} cushion).")
         out.append("EXIT MARKERS: MVRV > 3 or post-halving peak window → begin scale-out.")
-    out.append(f"200WMA {sig.wma200:,.0f} · band 0.85x {sig.band1_lvl:,.0f} · band 0.66x {sig.band2_lvl:,.0f}")
+    if not np.isnan(sig.wma200):
+        out.append(f"200WMA {sig.wma200:,.0f} · band 0.85x {sig.band1_lvl:,.0f} · band 0.66x {sig.band2_lvl:,.0f}")
+    else:
+        out.append("200WMA unavailable (short history) — rely on clock + structure.")
     out.append(f"Structure: {sig.structure} · S {sig.support:,.0f} / R {sig.resistance:,.0f}")
     return out
 
 
 def context_for_ai(sig: Signals, ev: dict, plan: dict) -> str:
     """Compact, numbers-first context for the AI briefing card."""
-    lines = [f"{sig.asset} {sig.price:,.0f} ({sig.price_source}). 200WMA {sig.wma200:,.0f} → ratio {sig.ratio:.2f}x (below={sig.below_wma}).",
+    lines = [f"{sig.asset} {sig.price:,.4g} ({sig.price_source}). " + (f"200WMA {sig.wma200:,.4g} → ratio {sig.ratio:.2f}x (below={sig.below_wma})." if not np.isnan(sig.wma200) else "200WMA n/a (short history)."),
              f"ATH {sig.ath:,.0f} on {sig.ath_date.date()}, {sig.days_since_ath}d ago; bottom window {DEFAULTS['win_start']}-{DEFAULTS['win_end']}d → in_window={sig.in_bottom_window}; projected trough date {sig.projected_bottom.date()}.",
-             f"MVRV {sig.mvrv:.2f} ({sig.mvrv_state}); realized price {sig.realized_price:,.0f}.",
-             f"Structure {sig.structure}; support {sig.support:,.0f}, resistance {sig.resistance:,.0f}, 20d range {sig.lo20:,.0f}-{sig.hi20:,.0f}.",
+             (f"MVRV {sig.mvrv:.2f} ({sig.mvrv_state}); realized price {sig.realized_price:,.4g}." if not np.isnan(sig.mvrv) else "MVRV n/a for this asset."),
+             f"Structure {sig.structure}; support {sig.support:,.4g}, resistance {sig.resistance:,.4g}, 20d range {sig.lo20:,.4g}-{sig.hi20:,.4g}.",
              f"Buy signals {sig.buy_count}/3, sell signals {sig.sell_count}/2."]
     if sig.buy_date:
         lines.append(f"Halving: last {sig.last_halving.date()} ({sig.days_since_halving}d ago), next ~{sig.next_halving.date()}; 500d buy date {sig.buy_date.date()} in {sig.days_to_buy_date}d; peak window={sig.in_peak_window}.")
