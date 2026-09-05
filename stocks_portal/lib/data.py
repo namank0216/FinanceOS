@@ -115,6 +115,7 @@ def get_history(ticker: str, period: str = "2y", interval: str = "1d") -> pd.Dat
         if df.empty:
             return pd.DataFrame()
         df.columns = [c.lower() for c in df.columns]
+        df = df.dropna(subset=["close"])
         df.index = df.index.tz_localize(None) if df.index.tz else df.index
         return df
     except Exception:
@@ -267,6 +268,7 @@ def bulk_history(tickers: list[str], period: str = "1y",
         df = yf.download(
             tickers=" ".join(tickers), period=period, interval=interval,
             auto_adjust=True, group_by="ticker", threads=True, progress=False,
+            df = df.dropna(how="all")
         )
         return df
     except Exception:
