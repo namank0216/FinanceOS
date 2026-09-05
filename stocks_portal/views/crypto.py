@@ -13,7 +13,7 @@ headless and commits the snapshot, so history accrues even when nobody opens the
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -69,7 +69,7 @@ if pick == "Other…":
     else:
         st.info("Type a coin name or symbol above."); st.stop()
 else:
-    top[1].caption(f"{cc.ASSETS[asset]['name']} · Coin Metrics + CoinGecko")
+    top[1].caption(f"{cc.ASSETS.get(asset, {}).get('name', asset)} · Coin Metrics + CoinGecko")
 years = top[2].slider("Chart window (years)", 1, 12, 4)
 use_llm = top[3].toggle("LLM agents", value=True, help="Analyst + auditor, plus the multi-model panel below")
 if top[4].button("Force refresh"):
@@ -88,6 +88,14 @@ for n in sig.notes:
 # ------------------------------------------------------------ SIDE PANEL: news that moves this asset
 with side:
     st.markdown("#### 📰 What's moving it")
+    web = R.get("web") or {}
+    if web.get("text"):
+        srcs = " · ".join(f"<a href='{u}' target='_blank'>{(t or u)[:28]}</a>" for t, u in web.get("sources", [])[:5])
+        st.markdown(f"<div style='border-left:4px solid {BLUE};padding:8px 10px;background:rgba(59,130,246,0.06);border-radius:6px;font-size:13px'>"
+                    f"<b>Web brief</b> <span style='color:{GREY};font-size:11px'>Gemini + Google Search · {web.get('model')}</span><br>"
+                    f"{web['text'].replace(chr(10), '<br>')}<br><span style='font-size:11px'>{srcs}</span></div>", unsafe_allow_html=True)
+    elif web.get("error"):
+        st.caption(f"Web brief unavailable: {web['error'][:80]}")
     news = R["news"]
     if news is None or news.empty:
         st.caption("No headlines fetched (feeds unreachable).")
@@ -136,7 +144,7 @@ def live_header():
     c[2].metric("Days since ATH", f"{s2.days_since_ath}d", "IN BOTTOM WINDOW" if s2.in_bottom_window else f"window {p['win_start']}-{p['win_end']}d", delta_color="off")
     c[3].metric("MVRV (live-scaled)", f"{s2.mvrv:.2f}" if not np.isnan(s2.mvrv) else "n/a", s2.mvrv_state, delta_color="off")
     c[4].metric("Signals", f"BUY {s2.buy_count}/3", f"SELL {s2.sell_count}/2", delta_color="off")
-    st.caption(f"{datetime.utcnow():%H:%M:%S} UTC · price history to {meta['price_end']} · on-chain to {meta['mvrv_end']} · "
+    st.caption(f"{datetime.now(timezone.utc):%H:%M:%S} UTC · price history to {meta['price_end']} · on-chain to {meta['mvrv_end']} · "
                f"agents last ran {R['diff'].get('previous_saved', '—') or 'first run'}")
 
 
@@ -221,6 +229,8 @@ if panel:
         with cols[i % len(cols)]:
             ok = r.get("audit_pass"); col = GREEN if ok else RED if ok is False else GREY
             head = f"<b>{r['label']}</b> · {r['latency_s']}s · bias {r.get('bias_7d')} c{r.get('conviction')} · key {r.get('key_level')}"
+            if r.get("resolved_note"):
+                head += f"<br><span style='color:{AMBER};font-size:11px'>{r['resolved_note']}</span>"
             body = (r["note"] or f"error: {r['error']}").replace(chr(10), "<br>")
             st.markdown(f"<div style='border-left:4px solid {col};padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:6px;font-size:13px;max-height:420px;overflow:auto'>{head}<br><br>{body}</div>", unsafe_allow_html=True)
             if r.get("audit"):

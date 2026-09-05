@@ -97,7 +97,7 @@ if not agg.empty:
             except Exception: pass
         return ""
     st.dataframe(
-        agg_disp.style.applymap(_color_net, subset=["net_directional_$"]) if "net_directional_$" in agg_disp.columns else agg_disp,
+        agg_disp.style.map(_color_net, subset=["net_directional_$"]) if "net_directional_$" in agg_disp.columns else agg_disp,
         use_container_width=True, hide_index=True,
     )
 

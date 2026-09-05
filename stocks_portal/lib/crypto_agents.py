@@ -95,7 +95,7 @@ def halving_agent() -> dict:
         j = r.json(); interval_min = float(j.get("timeAvg", 600_000)) / 60_000
     except Exception:
         pass
-    eta = datetime.utcnow() + timedelta(minutes=remaining * interval_min)
+    eta = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=remaining * interval_min)
     return _ok(source=src, height=height, next_halving_block=next_h_block, blocks_remaining=remaining,
                avg_block_min=round(interval_min, 2), projected_date=eta.date().isoformat(),
                drift_vs_static_days=(eta - cc.NEXT_HALVING_PROJECTED).days)
@@ -187,7 +187,7 @@ def news_agent(max_items: int = 40, hours: int = 48, asset_terms: tuple = ()) ->
 # ============================================================
 @st.cache_data(ttl=6 * 3600, show_spinner=False)
 def calendar_agent(days_ahead: int = 21) -> dict:
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
     events = [{"date": d, "event": "FOMC decision", "kind": "MACRO"} for d in FOMC]
     # CPI: BLS schedule page, best effort
     try:
@@ -395,7 +395,13 @@ def run_pipeline(asset: str = "BTC", params: dict | None = None, use_llm: bool =
             analysis = analyst_agent(context)
             audit = auditor_agent(analysis, context)
     panel = mp.run_panel(context, asset, sig.price, do_audit=True) if (sig and use_llm and use_panel) else []
+    web = {}
+    if sig and use_llm:
+        name = cc.ASSETS.get(asset, {}).get("name", asset)
+        web = mp.web_brief(f"Today is {datetime.now(timezone.utc):%Y-%m-%d}. In under 180 words, what happened in the last 48 hours "
+                           f"that materially affects the price of {name} ({asset})? Cover macro/Fed, ETF or institutional flows, "
+                           f"regulation, and any large liquidations or hacks. Dated bullet points, most important first, with sources.")
 
     return {"params": p, "sig": sig, "meta": meta, "evidence": ev, "halving": halv, "sentiment": sent, "etf": etf,
             "recal": recal, "calendar": cal, "news": news, "diff": diff, "context": context,
-            "analysis": analysis, "audit": audit, "panel": panel, "df": df, "live": live}
+            "analysis": analysis, "audit": audit, "panel": panel, "web": web, "df": df, "live": live}

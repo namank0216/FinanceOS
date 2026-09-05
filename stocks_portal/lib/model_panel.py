@@ -52,16 +52,20 @@ PROVIDERS = {
     "anthropic":  {"base": "https://api.anthropic.com/v1", "key": "ANTHROPIC_API_KEY"},
 }
 
+# NOTE (Sep 2026): Groq retired all Llama chat models on 2026-08-16; Google retired
+# Gemini 2.5 for new users. Roster below uses currently served IDs — edit in the UI when they rotate.
 DEFAULT_ROSTER = [
-    {"label": "Meta Llama 3.3 70B",   "provider": "groq",       "model": "llama-3.3-70b-versatile", "on": True},
-    {"label": "OpenAI gpt-oss-120B",  "provider": "groq",       "model": "openai/gpt-oss-120b",     "on": True},
-    {"label": "Gemini 2.5 Flash",     "provider": "gemini",     "model": "gemini-2.5-flash",        "on": True},
+    {"label": "OpenAI gpt-oss-120B (Groq)", "provider": "groq",   "model": "openai/gpt-oss-120b",  "on": True},
+    {"label": "Qwen 3.6 27B (Groq)",        "provider": "groq",   "model": "qwen/qwen3.6-27b",     "on": True},
+    {"label": "Gemini Flash (latest alias)", "provider": "gemini", "model": "gemini-flash-latest",  "on": True},
+    {"label": "Gemini Flash-Lite (latest)",  "provider": "gemini", "model": "gemini-flash-lite-latest", "on": False},
+    {"label": "Meta Llama (OpenRouter)",    "provider": "openrouter", "model": "meta-llama/llama-4-maverick:free", "on": False},
     {"label": "NVIDIA Nemotron (OR)", "provider": "openrouter", "model": "nvidia/nemotron-3-ultra-550b-a55b:free", "on": True},
     {"label": "DeepSeek V3 (OR)",     "provider": "openrouter", "model": "deepseek/deepseek-chat-v3-0324:free", "on": False},
     {"label": "NVIDIA Nemotron (NIM)","provider": "nvidia",     "model": "nvidia/llama-3.3-nemotron-super-49b-v1.5", "on": False},
     {"label": "Claude Haiku (paid)",  "provider": "anthropic",  "model": "claude-haiku-4-5-20251001", "on": False},
 ]
-AUDITOR = {"provider": "gemini", "model": "gemini-2.5-flash"}   # fixed grader; change in roster UI if no Gemini key
+AUDITOR = {"provider": "gemini", "model": "gemini-flash-latest"}   # fixed grader; change in roster UI if no Gemini key
 
 NOTE_PROMPT = (
     "You are a buy-side crypto strategist writing the morning note. Use ONLY the numbers and headlines in CONTEXT. "
@@ -105,6 +109,60 @@ def available(roster: list[dict]) -> list[dict]:
     return [r for r in roster if r.get("on") and _key(PROVIDERS[r["provider"]]["key"])]
 
 
+# ------------------------------------------------------------------ discovery / resolution
+# Preference order per provider when a requested ID is not served (newest/most capable first).
+PREFER = {
+    "gemini": ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash",
+               "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
+    "groq": ["openai/gpt-oss-120b", "qwen/qwen3.6-27b", "openai/gpt-oss-20b"],
+    "openrouter": [],
+    "nvidia": ["nvidia/llama-3.3-nemotron-super-49b-v1.5"],
+    "cerebras": ["gpt-oss-120b"],
+    "anthropic": ["claude-haiku-4-5-20251001"],
+}
+_served_cache: dict = {}
+
+
+def served_models(provider: str) -> list[str]:
+    """IDs the provider currently serves for this key (cached per process, 1h)."""
+    key = _key(PROVIDERS[provider]["key"])
+    if not key:
+        return []
+    hit = _served_cache.get(provider)
+    if hit and time.time() - hit[0] < 3600:
+        return hit[1]
+    ids: list[str] = []
+    try:
+        base = PROVIDERS[provider]["base"]
+        if provider == "gemini":
+            j = requests.get(f"{base}/models", params={"key": key, "pageSize": 200}, timeout=10).json()
+            ids = [m["name"].split("/", 1)[1] for m in j.get("models", [])
+                   if "generateContent" in m.get("supportedGenerationMethods", [])]
+        elif provider == "anthropic":
+            j = requests.get(f"{base}/models", timeout=10,
+                             headers={"x-api-key": key, "anthropic-version": "2023-06-01"}).json()
+            ids = [m["id"] for m in j.get("data", [])]
+        else:
+            j = requests.get(f"{base}/models", headers={"Authorization": f"Bearer {key}"}, timeout=10).json()
+            ids = [m["id"] for m in j.get("data", [])]
+    except Exception:
+        ids = []
+    _served_cache[provider] = (time.time(), ids)
+    return ids
+
+
+def resolve_model(provider: str, wanted: str) -> tuple[str, str]:
+    """Return (model_to_use, note). Aliases like gemini-flash-latest pass through;
+    retired IDs fall back to the first served model in PREFER order."""
+    ids = served_models(provider)
+    if not ids or wanted in ids or wanted.endswith("-latest"):
+        return wanted, ""
+    for cand in PREFER.get(provider, []):
+        if cand in ids:
+            return cand, f"{wanted} not served → using {cand}"
+    return wanted, f"{wanted} not served and no preferred fallback found"
+
+
 # ------------------------------------------------------------------ calls
 def _chat(provider: str, model: str, prompt: str, max_tokens: int = 700, timeout: int = 45) -> tuple[str, float]:
     key = _key(PROVIDERS[provider]["key"])
@@ -114,10 +172,11 @@ def _chat(provider: str, model: str, prompt: str, max_tokens: int = 700, timeout
     base = PROVIDERS[provider]["base"]
     if provider == "gemini":
         url = f"{base}/models/{model}:generateContent?key={key}"
-        body = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.2}}
+        body = {"contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"maxOutputTokens": max_tokens * 3, "thinkingConfig": {"thinkingLevel": "LOW"}}}
         r = requests.post(url, json=body, timeout=timeout); r.raise_for_status()
         j = r.json()
-        text = "".join(p.get("text", "") for p in j["candidates"][0]["content"]["parts"])
+        text = "".join(p.get("text", "") for p in j["candidates"][0]["content"].get("parts", []) if not p.get("thought"))
     elif provider == "anthropic":
         r = requests.post(f"{base}/messages", timeout=timeout,
                           headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
@@ -128,10 +187,13 @@ def _chat(provider: str, model: str, prompt: str, max_tokens: int = 700, timeout
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         if provider == "openrouter":
             headers["HTTP-Referer"] = "https://pulsefi.streamlit.app"; headers["X-Title"] = "PulseFi"
-        r = requests.post(f"{base}/chat/completions", headers=headers, timeout=timeout,
-                          json={"model": model, "temperature": 0.2, "max_tokens": max_tokens,
-                                "messages": [{"role": "user", "content": prompt}]})
-        r.raise_for_status(); text = r.json()["choices"][0]["message"]["content"]
+        body = {"model": model, "temperature": 0.2, "max_tokens": max_tokens * 3,
+                "messages": [{"role": "user", "content": prompt}]}
+        if "gpt-oss" in model or "qwen3" in model:
+            body["reasoning_effort"] = "low"          # reasoning models: keep thinking short
+        r = requests.post(f"{base}/chat/completions", headers=headers, timeout=timeout, json=body)
+        r.raise_for_status(); msg = r.json()["choices"][0]["message"]
+        text = msg.get("content") or msg.get("reasoning") or ""
     return text.strip(), round(time.time() - t0, 1)
 
 
@@ -152,7 +214,10 @@ def _run_one(entry: dict, context: str, asset: str, price: float) -> dict:
            "label": entry["label"], "provider": entry["provider"], "model": entry["model"],
            "note": "", "latency_s": None, "error": "", "bias_7d": None, "conviction": None, "key_level": None}
     try:
-        text, lat = _chat(entry["provider"], entry["model"], NOTE_PROMPT + context)
+        model, note = resolve_model(entry["provider"], entry["model"])
+        if note:
+            out["model"] = model; out["resolved_note"] = note
+        text, lat = _chat(entry["provider"], model, NOTE_PROMPT + context)
         j = _parse_json_tail(text)
         out.update(note=text, latency_s=lat, bias_7d=j.get("bias_7d"), conviction=j.get("conviction"), key_level=j.get("key_level"))
     except Exception as e:
@@ -164,7 +229,8 @@ def audit(note: str, context: str) -> dict:
     if not note:
         return {"audit": "", "unsupported": None, "audit_pass": None}
     try:
-        text, _ = _chat(AUDITOR["provider"], AUDITOR["model"], AUDIT_PROMPT.format(ctx=context, note=note), max_tokens=350)
+        model, _n = resolve_model(AUDITOR["provider"], AUDITOR["model"])
+        text, _ = _chat(AUDITOR["provider"], model, AUDIT_PROMPT.format(ctx=context, note=note), max_tokens=350)
         j = _parse_json_tail(text)
         return {"audit": text, "unsupported": j.get("unsupported"), "audit_pass": text.strip().startswith("AUDIT PASS") or j.get("unsupported") == 0}
     except Exception as e:
@@ -245,3 +311,30 @@ def openrouter_free_models() -> list[str]:
         return sorted(m["id"] for m in j.get("data", []) if m.get("id", "").endswith(":free"))
     except Exception:
         return []
+
+
+# ------------------------------------------------------------------ grounded web brief
+def web_brief(question: str, max_tokens: int = 600) -> dict:
+    """Gemini + Google Search grounding: the API-side equivalent of 'AI Mode'.
+    Returns {'text', 'sources': [(title, url)], 'model'} or {} without a Gemini key.
+    Deliberately NOT audited against the numbers context — it is web-sourced by design,
+    so it is shown with its citations instead of being scored."""
+    key = _key("GEMINI_API_KEY")
+    if not key:
+        return {}
+    model, _ = resolve_model("gemini", "gemini-flash-latest")
+    try:
+        r = requests.post(f"{PROVIDERS['gemini']['base']}/models/{model}:generateContent?key={key}", timeout=45,
+                          json={"contents": [{"parts": [{"text": question}]}],
+                                "tools": [{"google_search": {}}],
+                                "generationConfig": {"maxOutputTokens": max_tokens * 3, "thinkingConfig": {"thinkingLevel": "LOW"}}})
+        r.raise_for_status(); c = r.json()["candidates"][0]
+        text = "".join(p.get("text", "") for p in c["content"].get("parts", []) if not p.get("thought"))
+        srcs = []
+        for ch in (c.get("groundingMetadata", {}) or {}).get("groundingChunks", []) or []:
+            w = ch.get("web") or {}
+            if w.get("uri"):
+                srcs.append((w.get("title") or w["uri"], w["uri"]))
+        return {"text": text.strip(), "sources": srcs[:8], "model": model}
+    except Exception as e:
+        return {"error": str(e)[:160]}

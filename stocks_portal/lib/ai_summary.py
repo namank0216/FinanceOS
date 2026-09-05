@@ -240,11 +240,11 @@ def all_active_providers() -> list[str]:
 
 def provider_label_for(provider: str) -> str:
     if provider == "gemini":
-        model = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+        model = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
         ground = " + 🔍 live web" if GEMINI_GROUNDING else ""
         return f"Google Gemini ({model}{ground})"
     return {"anthropic": "Anthropic Claude (Sonnet)",
-            "groq": "Groq (Llama 3.3 70B - free)",
+            "groq": "Groq (gpt-oss-120b - free)",
             "openai": "OpenAI (GPT-4o-mini)",
             "ollama": "Ollama (local)"}.get(provider, provider)
 
@@ -307,7 +307,7 @@ def _ask_groq(context: str, max_tokens: int) -> str:
         headers={"Authorization": f"Bearer {GROQ_KEY}",
                  "Content-Type": "application/json"},
         json={
-            "model": "llama-3.3-70b-versatile",  # free, capable
+            "model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), "reasoning_effort": "low",
             "max_tokens": max_tokens,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -387,14 +387,14 @@ def _gemini_call(model: str, context: str, max_tokens: int, grounding: bool) -> 
 def _ask_gemini(context: str, max_tokens: int) -> str:
     """
     Google AI Studio Gemini API. Free tier limits:
-      - gemini-2.5-pro:   50 req/day, 5/min  (best quality, default)
+      - gemini-flash-latest:   50 req/day, 5/min  (best quality, default)
       - gemini-2.5-flash: 250 req/day, 10/min (auto-fallback on Pro quota)
       - gemini-2.0-flash: 1500 req/day (basic but reliable)
     Set GEMINI_MODEL env var to override default.
     Set GEMINI_GROUNDING=true to enable Google Search grounding (live web data).
     """
-    primary = (os.getenv("GEMINI_MODEL", "gemini-2.5-pro").strip()
-               or "gemini-2.5-pro")
+    primary = (os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip()
+               or "gemini-flash-latest")
     fallback = "gemini-2.5-flash" if primary != "gemini-2.5-flash" else "gemini-2.0-flash"
 
     # Try primary model first
@@ -518,7 +518,7 @@ def has_ai() -> bool:
 def provider_label() -> str:
     p = detect_provider()
     if p == "gemini":
-        model = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+        model = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
         ground = " + 🔍 live web" if GEMINI_GROUNDING else ""
         return f"Google Gemini ({model}{ground} - free tier)"
     return {"anthropic": "Anthropic Claude (Sonnet)",

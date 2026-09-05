@@ -262,8 +262,8 @@ def compute_signals(df: pd.DataFrame, asset: str = "BTC", live: dict | None = No
 
     ath = float(s.max()); ath_date = s.idxmax().to_pydatetime()
     if price > ath:
-        ath, ath_date = price, datetime.utcnow()
-    days_since_ath = (datetime.utcnow() - ath_date).days
+        ath, ath_date = price, datetime.now(timezone.utc).replace(tzinfo=None)
+    days_since_ath = (datetime.now(timezone.utc).replace(tzinfo=None) - ath_date).days
     in_window = p["win_start"] <= days_since_ath <= p["win_end"]
 
     mvrv_hist = df["mvrv"].dropna()
@@ -314,7 +314,7 @@ def compute_signals(df: pd.DataFrame, asset: str = "BTC", live: dict | None = No
     # Halving clock applies to ETH too: ETH's 2017/2021 peaks landed inside
     # BTC's post-halving window. UI labels it "BTC cycle clock" for ETH.
     if True:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         nh = p.get("next_halving")
         if isinstance(nh, str):
             try:
@@ -437,6 +437,9 @@ def evidence(asset: str = "BTC", p: dict | None = None) -> dict:
                           "return_%": round(all_r.median() * 100), "local_median_%": np.nan,
                           "percentile_vs_nearby_windows": round(float((all_r > 0).mean() * 100))})
     halv_tbl = pd.DataFrame(halv_rows)
+    for c in ("halving", "buy", "sell"):
+        if c in halv_tbl.columns:
+            halv_tbl[c] = halv_tbl[c].astype(str)
 
     return {"signals": sig_tbl, "troughs": troughs_tbl, "halving": halv_tbl,
             "data_start": s.index[0].date(), "data_end": s.index[-1].date(), "n_days": int(len(s))}

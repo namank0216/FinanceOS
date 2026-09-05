@@ -389,7 +389,7 @@ def ai_thesis(ticker: str, fp: dict | None = None) -> dict:
             prov = cand; break
     if not prov:
         return {}
-    model = {"gemini": "gemini-2.5-flash", "groq": "openai/gpt-oss-120b", "openrouter": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    model = {"gemini": "gemini-flash-latest", "groq": "openai/gpt-oss-120b", "openrouter": "nvidia/nemotron-3-ultra-550b-a55b:free",
              "anthropic": "claude-haiku-4-5-20251001"}[prov]
     try:
         text, lat = mp._chat(prov, model, THESIS_PROMPT.format(ticker=ticker, facts=facts), max_tokens=900)
