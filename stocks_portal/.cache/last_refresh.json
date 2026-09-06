@@ -1,27 +1,34 @@
 {
  "BTC": {
-  "price": 79804.0,
-  "ratio": 1.232,
+  "price": 79682.0,
+  "ratio": 1.23,
   "buy": 1,
   "sell": 0,
-  "changes": [],
-  "halving": "2028-04-07",
-  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "The ANALYSIS contains no market interpretations or substantive assertions to evaluate, consisting solely of a system error message:\n\n* \"_(Gemini error 404: {\\n  \\\"error\\\": {\\n    \\\"code\\\": 404,\\n    \\\"message\\\": \\\"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_\" is an external system/API error message that is not supported by or present in the CONTEXT."
+  "changes": [
+   "Price vs 200WMA: True \u2192 False",
+   "Structure: BULL (HH+HL) \u2192 RANGE",
+   "Buy signals: 2 \u2192 1",
+   "Halving buy date: False \u2192 True",
+   "Price moved +3139.6% since last snapshot (2026-09-05)",
+   "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
+  ],
+  "halving": "2028-01-27",
+  "analysis": "### CYCLE READ\nBTC trades at 79,680 (1.23x the 200WMA of 64,800), sitting 335 days post-ATH inside the historical 330\u2013430 day bottom window ahead of the projected 2026-10-11 trough. Baseline 1-year forward returns show a 74% positive hit rate (median +101%), but MVRV at 1.46 remains above the high-conviction 1.0 threshold that historically delivers 99% positive outcomes (median +123% across 27 episodes).\n\n### CATALYSTS (next 14 days, dated)\n- 2026-09-11 (+5d): US CPI release tests the current 73 Greed sentiment and 0.0016%/8h funding rate.\n- 2026-09-14 (+7d): The 500-day pre-halving accumulation window activates exactly 500 days prior to the projected 2028-01-27 halving.\n- 2026-09-16 (+10d): FOMC rate decision provides macro direction following recent 6% tech rally headlines.\n\n### RULE STATUS\nClosest rule to triggering: Range breakout at the 81,265 resistance level, which is only 1.99% above current spot of 79,680. A daily close above 81,265 exits the 20-day range (64,490\u201381,265) and flips structure from RANGE back to BULL.\n\n### RISK\nSingle biggest risk: Breakdown from the active 64,490\u201381,265 range toward realized price at 54,620 (near the 0.85x 200WMA band of 55,080). A breach below 62,844 support confirms the breakdown, invalidating the 1 of 3 active buy signals.",
+  "audit": "The following claims in the ANALYSIS are NOT supported by the CONTEXT:\n\n1. **\"flips structure from RANGE back to BULL\"** \u2014 The context does not define the rule or condition required to flip structure from RANGE back to BULL (it only records a historical transition `BULL (HH+HL) \u2192 RANGE`).\n2. **\"invalidating the 1 of 3 active buy signals.\"** \u2014 The context does not state what the active buy signal is or that a breach below 62,844 support invalidates it."
  },
  "ETH": {
-  "price": 2459.63,
-  "ratio": 0.985,
+  "price": 2481.74,
+  "ratio": 0.994,
   "buy": 2,
   "sell": 0,
   "changes": [
    "Price vs 200WMA: False \u2192 True",
    "Structure: RANGE \u2192 BULL (HH+HL)",
    "Buy signals: 1 \u2192 2",
-   "Price moved -96.9% since last snapshot (2026-09-05)"
+   "Price moved -96.9% since last snapshot (2026-09-06)"
   ],
-  "halving": "2028-04-07",
-  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
+  "halving": "2028-01-27",
+  "analysis": "**CYCLE READ**  \nETH sits at 2,482 (0.99x the 2,498 200WMA) inside the 330-430d bottom window (day 380 post-ATH), a sub-200WMA regime carrying a historical 98% 1-year positive hit rate (median +111% across 24 episodes). With MVRV at 1.14 versus the 2,184 realized price and 2 of 3 buy signals active, the cycle structure is BULL (HH+HL).\n\n**CATALYSTS**  \nKey dated macro and crypto drivers over the next 14 days include the US CPI release on 2026-09-11 (+5d), the 500-day pre-halving buy date arriving on 2026-09-14 (+7d), and the FOMC rate decision on 2026-09-16 (+10d).\n\n**RULE STATUS**  \nThe closest rule to firing is the primary 200WMA accumulation threshold at 2,498, which is active with ETH at 2,482, while the 0.85x deep-value tier sits just 14.5% below at 2,123. Exit rules remain completely disengaged with sell signals at 0/2 and MVRV at 1.14 versus the 3.0 scale-out trigger.\n\n**RISK**  \nThe single biggest downside threat is a breakdown of structural bull market support at 1,843, which would confirm if ETH breaches the 20-day range low of 1,912 and drives MVRV toward 1.0 (where 1-year historical positive returns fall to 79% across 36 episodes).",
+  "audit": "AUDIT PASS \u2014 all claims traceable to context."
  }
 }
