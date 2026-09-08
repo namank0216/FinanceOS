@@ -1,34 +1,33 @@
 {
  "BTC": {
-  "price": 79179.0,
-  "ratio": 1.221,
+  "price": 78696.0,
+  "ratio": 1.213,
   "buy": 1,
   "sell": 0,
   "changes": [
    "Price vs 200WMA: True \u2192 False",
    "Structure: BULL (HH+HL) \u2192 RANGE",
    "Buy signals: 2 \u2192 1",
-   "Halving buy date: True \u2192 False",
-   "Price moved +3090.5% since last snapshot (2026-09-06)",
+   "Price moved +3054.9% since last snapshot (2026-09-07)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-03-05",
-  "analysis": "### CYCLE READ\nBTC trades at 79,180 with an MVRV of 1.45, sitting 336 days past its 124,824 ATH directly inside the 330\u2013430 day historical bottom window. Baseline 1-year forward returns show a 74% positive win rate (median +101% across 1 episode), but with price 1.22x above the 64,842 200WMA and only 1 of 3 buy signals triggered, the market remains range-bound between 62,844 and 81,265.\n\n### CATALYSTS (next 14 days, dated)\n* **2026-09-11 (+4d):** US CPI release will set near-term rate expectations against current neutral funding rates of 0.0047%/8h.\n* **2026-09-16 (+9d):** FOMC policy decision arrives with Fear & Greed elevated at 71.\n\n### RULE STATUS\nClosest to triggering is the range-resistance test at 81,265 (just 2.6% above current 79,180 price), while the primary accumulation target sits at the 200WMA trigger of 64,842.\n\n### RISK\nThe primary cyclical risk is a breakdown through range support at 62,844, with a move below the 54,620 realized price confirming a capitulation towards historical sub-200WMA drawdowns.",
-  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
+  "halving": "2028-03-17",
+  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
+  "audit": "The provided ANALYSIS consists solely of an API error message and contains no market analysis derived from the CONTEXT:\n\n- `\"(Gemini error 404: {\\n  \\\"error\\\": {\\n    \\\"code\\\": 404,\\n    \\\"message\\\": \\\"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)\"` \u2014 Not supported by context."
  },
  "ETH": {
-  "price": 2494.44,
-  "ratio": 0.998,
+  "price": 2495.37,
+  "ratio": 0.999,
   "buy": 2,
   "sell": 0,
   "changes": [
    "Price vs 200WMA: False \u2192 True",
    "Structure: RANGE \u2192 BULL (HH+HL)",
    "Buy signals: 1 \u2192 2",
-   "Price moved -96.8% since last snapshot (2026-09-07)"
+   "Price moved -96.8% since last snapshot (2026-09-08)"
   ],
-  "halving": "2028-03-05",
+  "halving": "2028-03-17",
   "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "Unsupported claims in ANALYSIS:\n1. `Gemini error 404: { \"error\": { \"code\": 404, \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)` (API error text; contains no factual market or numeric claims supported by the context)."
+  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
  }
 }
