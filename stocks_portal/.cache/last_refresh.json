@@ -1,6 +1,6 @@
 {
  "BTC": {
-  "price": 78696.0,
+  "price": 78778.0,
   "ratio": 1.213,
   "buy": 1,
   "sell": 0,
@@ -8,26 +8,26 @@
    "Price vs 200WMA: True \u2192 False",
    "Structure: BULL (HH+HL) \u2192 RANGE",
    "Buy signals: 2 \u2192 1",
-   "Price moved +3054.9% since last snapshot (2026-09-07)",
+   "Price moved +3057.0% since last snapshot (2026-09-08)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-03-17",
-  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "The provided ANALYSIS consists solely of an API error message and contains no market analysis derived from the CONTEXT:\n\n- `\"(Gemini error 404: {\\n  \\\"error\\\": {\\n    \\\"code\\\": 404,\\n    \\\"message\\\": \\\"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)\"` \u2014 Not supported by context."
+  "halving": "2028-03-20",
+  "analysis": "**CYCLE READ**\nBTC sits at 78,780 in a RANGE structure between support at 62,844 and resistance at 81,265, resting 338 days past the 124,824 ATH inside the 330\u2013430 day historical bottom window where baseline 1-year forward returns average a 74% positive hit rate with +101% median gain.\n\n**CATALYSTS (next 14 days, dated)**\nMacro faces the CPI release on 2026-09-11 (+2d), followed by the FOMC interest rate decision on 2026-09-16 (+7d).\n\n**RULE STATUS**\nThe closest trigger to firing is the 200WMA accumulation floor at 64,931, requiring a -17.6% drop from 78,780 to test the 1.0x line that historically delivers a 100% positive 1-year win rate across 20 episodes.\n\n**RISK**\nThe single biggest risk is a structural breakdown below the 20-day range low of 73,020 and cycle support at 62,844, which would confirm a deeper drawdown toward the 0.85x 200WMA band at 55,191.",
+  "audit": "- \"where baseline 1-year forward returns average a 74% positive hit rate with +101% median gain\": In the context, the 74% positive / +101% median metric is explicitly for \"ANY day (baseline) 1y\", NOT for inside the \"330\u2013430 day historical bottom window\".\n- \"requiring a -17.6% drop from 78,780\": The specific percentage drop of \"-17.6%\" is not stated in the context (derived calculation)."
  },
  "ETH": {
-  "price": 2495.37,
-  "ratio": 0.999,
+  "price": 2495.06,
+  "ratio": 0.998,
   "buy": 2,
   "sell": 0,
   "changes": [
    "Price vs 200WMA: False \u2192 True",
    "Structure: RANGE \u2192 BULL (HH+HL)",
    "Buy signals: 1 \u2192 2",
-   "Price moved -96.8% since last snapshot (2026-09-08)"
+   "Price moved -96.8% since last snapshot (2026-09-09)"
   ],
-  "halving": "2028-03-17",
+  "halving": "2028-03-20",
   "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
+  "audit": "The ANALYSIS contains no market assessment or factual claims derived from the CONTEXT to audit, as it consists entirely of an API error message:\n\n* `\"Gemini error 404: { \"error\": { \"code\": 404, \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_\"` \u2014 Not supported (system error text, not context analysis)."
  }
 }
