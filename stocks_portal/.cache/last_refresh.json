@@ -1,33 +1,31 @@
 {
  "BTC": {
-  "price": 77120.0,
-  "ratio": 1.187,
+  "price": 77934.0,
+  "ratio": 1.199,
   "buy": 1,
   "sell": 0,
   "changes": [
    "Price vs 200WMA: True \u2192 False",
    "Structure: BULL (HH+HL) \u2192 RANGE",
    "Buy signals: 2 \u2192 1",
-   "Price moved +2990.9% since last snapshot (2026-09-09)",
+   "Price moved +3086.2% since last snapshot (2026-09-10)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-03-28",
+  "halving": "2028-03-30",
   "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "Unsupported claim:\n\n> `\"(Gemini error 404: {\\n  \\\"error\\\": {\\n    \\\"code\\\": 404,\\n    \\\"message\\\": \\\"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)\"`\n\nThis entire text is an API error message and contains no factual or numeric claims supported by the context."
+  "audit": "The ANALYSIS provided is an API error message (`Gemini error 404...`) rather than a market analysis, containing no factual or numeric claims derived from or related to the CONTEXT."
  },
  "ETH": {
-  "price": 2445.97,
-  "ratio": 0.978,
-  "buy": 2,
+  "price": 2577.67,
+  "ratio": 1.03,
+  "buy": 1,
   "sell": 0,
   "changes": [
-   "Price vs 200WMA: False \u2192 True",
    "Structure: RANGE \u2192 BULL (HH+HL)",
-   "Buy signals: 1 \u2192 2",
-   "Price moved -96.8% since last snapshot (2026-09-10)"
+   "Price moved -96.7% since last snapshot (2026-09-11)"
   ],
-  "halving": "2028-03-28",
-  "analysis": "**CYCLE READ**\nETH at 2,446 sits below its 200WMA of 2,501 (0.98x ratio), a setup carrying a 98% historical 1-year positive base rate (median +111% across 24 episodes). We are 384 days past the 4,831 ATH, firmly inside the 330\u2013430 day historical bottom window where 2 of 3 buy signals are active. \n\n**CATALYSTS (next 14 days, dated)**\nCPI release arrives 2026-09-11 (+1d), followed by the FOMC rate decision on 2026-09-16 (+6d). The pre-halving 500-day buy window opens in 64 days on 2026-11-14, ahead of the next halving projected for 2028-03-28.\n\n**RULE STATUS**\nClosest to triggering is the 200WMA 0.85x band entry at 2,126, which sits just 320 points (-13.1%) below the current 2,446 price. Resistance at 2,515 is only 69 points away, while the user's scale-out exit rules (MVRV > 3.0 vs. current 1.12) remain entirely inactive.\n\n**RISK**\nThe single biggest risk is macro tightening driving yields higher after the ECB raised rates to 2.5%, confirmed if ETH breaks below key structural support at 1,843 (a 603-point drop from 2,446).",
-  "audit": "AUDIT PASS \u2014 all claims traceable to context."
+  "halving": "2028-03-30",
+  "analysis": "_(Provider gemini unavailable: HTTPSConnectionPool(host='generativelanguage.googleapis.com', port=443): Read timed out. (read timeout=45))_",
+  "audit": "_(Provider gemini unavailable: HTTPSConnectionPool(host='generativelanguage.googleapis.com', port=443): Read timed out. (read timeout=45))_"
  }
 }
