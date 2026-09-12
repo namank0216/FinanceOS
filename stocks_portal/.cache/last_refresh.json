@@ -1,31 +1,29 @@
 {
  "BTC": {
-  "price": 77934.0,
-  "ratio": 1.199,
+  "price": 77348.0,
+  "ratio": 1.189,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price vs 200WMA: True \u2192 False",
    "Structure: BULL (HH+HL) \u2192 RANGE",
-   "Buy signals: 2 \u2192 1",
-   "Price moved +3086.2% since last snapshot (2026-09-10)",
+   "Price moved +2900.7% since last snapshot (2026-09-11)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-03-30",
-  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "The ANALYSIS provided is an API error message (`Gemini error 404...`) rather than a market analysis, containing no factual or numeric claims derived from or related to the CONTEXT."
+  "halving": "2028-03-18",
+  "analysis": "**CYCLE READ**\nBTC sits at 77,350 within the historical 330\u2013430 day bottom window at 341 days post-ATH, where the ANY day baseline gives a 74% positive 1-year rate (median +101%). MVRV reads a neutral 1.42 above realized price (54,620), while the 500-day pre-halving buy date arrives in exactly 52 days on 2026-11-04.\n\n**CATALYSTS**\n- 2026-09-16 (+4d): FOMC rate decision amidst the 10-year Treasury yield hitting 4.94%.\n- 2026-09-25 (+13d): Quarterly options and futures expiry with current funding at 0.0043%/8h.\n\n**RULE STATUS**\nClosest trigger is the lower structure support boundary at 62,844 (currently 14,506 points away), which sits just below the 200WMA at 65,060 (1.19x ratio). A failure there targets the user's 0.85x 200WMA accumulation band at 55,301, historically carrying a 100% positive 1-year base rate (median +121% over 20 episodes).\n\n**RISK**\nThe primary risk is a macro-driven breakdown below the 20-day range low of 76,550, confirmed by a daily close below structural support at 62,844.",
+  "audit": "The following numeric or factual claims in the ANALYSIS are NOT supported by the CONTEXT:\n\n1. **\"options and futures expiry\"**: Context states only `\"Quarterly expiry 2026-09-25 (+13d)\"` without specifying options or futures.\n2. **\"target the user's 0.85x 200WMA accumulation band at 55,301, historically carrying a 100% positive 1-year base rate (median +121% over 20 episodes)\"**: The context attributes the 100% positive 1y rate (median +121%, 20 episodes) specifically to `\"Price < 200-week MA 1y\"`, not to the `\"0.85x 200WMA accumulation band\"`.\n3. **\"confirmed by a daily close below structural support at 62,844\"**: The requirement of a `\"daily close\"` is not present anywhere in the context."
  },
  "ETH": {
-  "price": 2577.67,
-  "ratio": 1.03,
+  "price": 2534.37,
+  "ratio": 1.013,
   "buy": 1,
   "sell": 0,
   "changes": [
    "Structure: RANGE \u2192 BULL (HH+HL)",
-   "Price moved -96.7% since last snapshot (2026-09-11)"
+   "Price moved -96.7% since last snapshot (2026-09-12)"
   ],
-  "halving": "2028-03-30",
-  "analysis": "_(Provider gemini unavailable: HTTPSConnectionPool(host='generativelanguage.googleapis.com', port=443): Read timed out. (read timeout=45))_",
-  "audit": "_(Provider gemini unavailable: HTTPSConnectionPool(host='generativelanguage.googleapis.com', port=443): Read timed out. (read timeout=45))_"
+  "halving": "2028-03-18",
+  "analysis": "**CYCLE READ**\nETH sits at 2,534, hovering 1.01x above its 2,503 200WMA and inside the 330\u2013430 day bottom window at day 386 post-ATH, where the historical baseline provides a 65% positive 1-year hit rate (median +54%).\n\n**CATALYSTS (next 14 days, dated)**\nMacro events feature the FOMC rate decision on 2026-09-16 (+4d) followed by the quarterly derivatives expiry on 2026-09-25 (+13d).\n\n**RULE STATUS**\nThe closest trigger to firing is the 200WMA breach at 2,503 (just 31 points below current price), which unlocks an asymmetric buy rule backed by a 98% 1-year historical win rate (median +111% across 24 episodes).\n\n**RISK**\nThe primary threat is structural failure below the 1,843 support level, which would invalidate the current BULL structure after rejected tests of the 2,535 resistance ceiling.",
+  "audit": "AUDIT PASS \u2014 all claims traceable to context."
  }
 }
