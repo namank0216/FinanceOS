@@ -1,29 +1,27 @@
 {
  "BTC": {
-  "price": 77256.0,
-  "ratio": 1.187,
+  "price": 79176.0,
+  "ratio": 1.215,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Structure: BULL (HH+HL) \u2192 RANGE",
-   "Price moved +2948.3% since last snapshot (2026-09-12)",
+   "Price moved +3060.9% since last snapshot (2026-09-13)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-03-18",
-  "analysis": "CYCLE READ\nAt 77,260 BTC sits in a neutral MVRV regime of 1.41, trading 1.19x above the 65,104 200WMA while 342 days post-ATH places price squarely inside the historical 330-430 day trough window heading toward the projected 2026-10-11 bottom. With only 1 of 3 buy signals active and the ANY-day baseline positive rate at 74% (median +101% over 1 episode), current range-bound structure between 62,844 support and 81,265 resistance does not yet meet the 100% historical 1-year win rate seen only when price breaches the 65,104 200WMA floor across 20 episodes.\n\nCATALYSTS (next 14 days, dated)\n2026-09-16 (+3d): FOMC rate decision amidst market pricing of a Warsh hike.\n2026-09-25 (+12d): Quarterly derivatives expiry testing the 76,550-81,265 20-day band.\n\nRULE STATUS\nThe closest exit trigger is MVRV > 3.0 (or adaptive euphoria at 2.0), requiring a 41.8% expansion from the current 1.41 level; on the downside, the closest entry trigger is the 200WMA touch at 65,104, currently 15.7% below the active 77,260 price.\n\nRISK\nThe primary threat is structural range failure down to the realized price of 54,620, which would be confirmed by a daily close breaking below the 62,844 support boundary.",
-  "audit": "The following claims in the ANALYSIS are NOT supported by the CONTEXT:\n\n1. **\"testing the 76,550-81,265 20-day band\"** \u2014 The context states the 20-day range is `7.655e+04-8.126e+04` (76,550 to 81,260), not 81,265 (which is the structural resistance level). Furthermore, that the expiry is specifically \"testing\" this band is an unsourced characterization.\n2. **\"confirmed by a daily close breaking below the 62,844 support boundary\"** \u2014 The requirement of a \"daily close\" to confirm a breakdown is not mentioned in the context."
+  "halving": "2028-03-16",
+  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
+  "audit": "_(Provider gemini unavailable: HTTPSConnectionPool(host='generativelanguage.googleapis.com', port=443): Read timed out. (read timeout=45))_"
  },
  "ETH": {
-  "price": 2504.87,
-  "ratio": 1.001,
+  "price": 2541.69,
+  "ratio": 1.015,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Structure: RANGE \u2192 BULL (HH+HL)",
-   "Price moved -96.8% since last snapshot (2026-09-13)"
+   "Price moved -96.8% since last snapshot (2026-09-14)"
   ],
-  "halving": "2028-03-18",
-  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
+  "halving": "2028-03-16",
+  "analysis": "**CYCLE READ**\nETH trades at 2,542 (1.01x the 200WMA of 2,504) within the 330-430d bottom window (day 388 post-ATH of 4,831), where a drop below 200WMA holds a 98% 1-year historical win rate (median +111% across 24 episodes) versus the 65% ANY-day baseline.\n\n**CATALYSTS (next 14 days, dated)**\n- 2026-09-16 (+2d): FOMC rate decision amidst the 10-year Treasury yield testing the 5% level.\n- 2026-09-25 (+11d): Crypto quarterly derivatives expiry with funding currently neutral at 0.0067%/8h.\n\n**RULE STATUS**\nClosest to triggering is the long re-entry rule at the 200WMA band of 2,504, sitting exactly 38 points (1.5%) below the current 2,542 price.\n\n**RISK**\nThe single biggest risk is macro tightening breaking market structure, confirmed if price breaks support at 2,391 and drags MVRV below the 1.0 threshold (realized price 2,184).",
+  "audit": "AUDIT PASS \u2014 all claims traceable to context."
  }
 }
