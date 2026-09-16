@@ -1,28 +1,30 @@
 {
  "BTC": {
-  "price": 77064.0,
-  "ratio": 1.182,
+  "price": 75597.0,
+  "ratio": 1.159,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved +2932.0% since last snapshot (2026-09-14)",
+   "Price vs 200WMA: True \u2192 False",
+   "Buy signals: 2 \u2192 1",
+   "Price moved +3005.2% since last snapshot (2026-09-15)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-03-11",
+  "halving": "2028-03-17",
   "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
   "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
  },
  "ETH": {
-  "price": 2434.52,
-  "ratio": 0.972,
+  "price": 2379.85,
+  "ratio": 0.95,
   "buy": 2,
   "sell": 0,
   "changes": [
    "Price vs 200WMA: False \u2192 True",
    "Buy signals: 1 \u2192 2",
-   "Price moved -96.8% since last snapshot (2026-09-15)"
+   "Price moved -96.9% since last snapshot (2026-09-16)"
   ],
-  "halving": "2028-03-11",
+  "halving": "2028-03-17",
   "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
   "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
  }
