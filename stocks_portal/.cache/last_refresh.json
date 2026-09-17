@@ -1,30 +1,30 @@
 {
  "BTC": {
-  "price": 75597.0,
-  "ratio": 1.159,
+  "price": 76859.0,
+  "ratio": 1.177,
   "buy": 1,
   "sell": 0,
   "changes": [
    "Price vs 200WMA: True \u2192 False",
    "Buy signals: 2 \u2192 1",
-   "Price moved +3005.2% since last snapshot (2026-09-15)",
+   "Price moved +3129.6% since last snapshot (2026-09-16)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-03-17",
-  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
+  "halving": "2028-03-21",
+  "analysis": "CYCLE READ\nAt 346 days post-ATH, BTC sits inside the historical 330-430 day bottom window with price at $76,860, trading 1.18x above the 200WMA ($65,280). With MVRV at 1.41, baseline forward 1-year returns show a 74% positive win rate (median +101% across 1 episode), while structural buy conditions remain incomplete at 1/3 signals triggered.\n\nCATALYSTS (next 14 days, dated)\nThe quarterly derivatives expiry hits on 2026-09-25 (+8 days), testing the current 20-day trading range of $75,590 to $81,260 alongside neutral 0.01%/8h funding. \n\nRULE STATUS\nThe closest rule to firing is the 200WMA downside entry band, requiring a decline from current price $76,860 to the 0.85x band trigger at $55,484 (a 27.8% drop, while MVRV needs to fall 0.41 points to reach the 99% win rate historical buy threshold at <1.0).\n\nRISK\nThe primary threat is cycle breakdown below the $62,844 support level, confirmed by a break beneath the 200WMA of $65,280.",
+  "audit": "AUDIT PASS \u2014 all claims traceable to context."
  },
  "ETH": {
-  "price": 2379.85,
-  "ratio": 0.95,
+  "price": 2469.21,
+  "ratio": 0.985,
   "buy": 2,
   "sell": 0,
   "changes": [
    "Price vs 200WMA: False \u2192 True",
    "Buy signals: 1 \u2192 2",
-   "Price moved -96.9% since last snapshot (2026-09-16)"
+   "Price moved -96.8% since last snapshot (2026-09-17)"
   ],
-  "halving": "2028-03-17",
+  "halving": "2028-03-21",
   "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
   "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
  }
