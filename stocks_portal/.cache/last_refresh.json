@@ -1,29 +1,27 @@
 {
  "BTC": {
-  "price": 80840.0,
-  "ratio": 1.238,
+  "price": 81802.0,
+  "ratio": 1.251,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price vs 200WMA: True \u2192 False",
-   "Buy signals: 2 \u2192 1",
-   "Price moved +3173.9% since last snapshot (2026-09-17)",
+   "Price moved +3057.6% since last snapshot (2026-09-18)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-03-24",
-  "analysis": "**CYCLE READ**  \nBTC trades at 80,840 (1.24x the 65,321 200WMA) inside the 330\u2013430 day historical bottom window (day 347 post-ATH) ahead of the 2026-10-11 projected trough, presenting a baseline 1-year positive return probability of 74% (median +101%).\n\n**CATALYSTS (next 14 days, dated)**  \nQuarterly expiry hits on 2026-09-25 (+7d), while the 500-day pre-halving buy window opens on 2026-11-10 in 52 days.\n\n**RULE STATUS**  \nThe closest rule to triggering is the scale-out plan via the adaptive euphoria threshold of MVRV > 2.0 (current MVRV is 1.48, realized price 54,620) or breakout above resistance at 81,265.\n\n**RISK**  \nThe single biggest risk is structural failure below support at 62,844, confirmed by price breaking below the 200WMA at 65,321 (where historical sub-200WMA episodes average a 100% 1-year win rate across 20 episodes).",
+  "halving": "2028-11-06",
+  "analysis": "**CYCLE READ**\nBTC sits at 81,800 inside the 330-430 day historical bottom window (day 348 post-ATH of 124,824), but MVRV at 1.50 and 1/3 buy signals confirm this is a mid-cycle consolidation, with any-day baseline 1-year forward returns positive 74% of the time (median +101%).\n\n**CATALYSTS (next 14 days, dated)**\n- 2026-09-25 (+6d): Quarterly derivatives expiry arrives with funding at 0.01%/8h and price pinning against 81,814 resistance.\n- 2026-10-02 (+13d): Day 362 post-ATH enters the final 68-day stretch toward the 2026-10-11 projected trough date.\n\n**RULE STATUS**\nClosest rule is the bull structure invalidation: an 81,800 spot breakdown below key support at 62,844 (a 23.2% decline) triggers market structure failure, well ahead of the MVRV > 3.0 scale-out exit rule.\n\n**RISK**\nSingle biggest risk is a bull-to-bear structure flip via rejection at 81,814 resistance, confirmed strictly by a daily close below 62,844 support.",
   "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
  },
  "ETH": {
-  "price": 2590.63,
-  "ratio": 1.033,
+  "price": 2648.11,
+  "ratio": 1.055,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved -96.8% since last snapshot (2026-09-18)"
+   "Price moved -96.8% since last snapshot (2026-09-19)"
   ],
-  "halving": "2028-03-24",
+  "halving": "2028-11-06",
   "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
+  "audit": "The provided ANALYSIS contains no factual or numeric market claims to audit; it is solely an API error message (\"Gemini error 404: ...\"). \n\nUnsupported claims:\n- `_(Gemini error 404: { \"error\": { \"code\": 404, \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_` \u2014 The analysis contains an error payload rather than an analytical interpretation of the context data."
  }
 }
