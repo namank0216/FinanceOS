@@ -1,27 +1,27 @@
 {
  "BTC": {
-  "price": 81802.0,
-  "ratio": 1.251,
+  "price": 81384.0,
+  "ratio": 1.244,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved +3057.6% since last snapshot (2026-09-18)",
+   "Price moved +2973.3% since last snapshot (2026-09-19)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-11-06",
-  "analysis": "**CYCLE READ**\nBTC sits at 81,800 inside the 330-430 day historical bottom window (day 348 post-ATH of 124,824), but MVRV at 1.50 and 1/3 buy signals confirm this is a mid-cycle consolidation, with any-day baseline 1-year forward returns positive 74% of the time (median +101%).\n\n**CATALYSTS (next 14 days, dated)**\n- 2026-09-25 (+6d): Quarterly derivatives expiry arrives with funding at 0.01%/8h and price pinning against 81,814 resistance.\n- 2026-10-02 (+13d): Day 362 post-ATH enters the final 68-day stretch toward the 2026-10-11 projected trough date.\n\n**RULE STATUS**\nClosest rule is the bull structure invalidation: an 81,800 spot breakdown below key support at 62,844 (a 23.2% decline) triggers market structure failure, well ahead of the MVRV > 3.0 scale-out exit rule.\n\n**RISK**\nSingle biggest risk is a bull-to-bear structure flip via rejection at 81,814 resistance, confirmed strictly by a daily close below 62,844 support.",
-  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
+  "halving": "2028-06-28",
+  "analysis": "**CYCLE READ**\nBTC sits at 81,380 with an MVRV of 1.49, resting 349 days past the 124,824 ATH inside the 330\u2013430 day historical bottom window where baseline 1-year forward returns are positive 74% of the time (median +101%). \n\n**CATALYSTS (next 14 days, dated)**\nQuarterly options expiry occurs on 2026-09-25 (in 5 days), impacting open interest at the current 81,365 resistance level.\n\n**RULE STATUS**\nThe closest user rule to triggering is an invalidation of the bullish market structure via a breakdown below the 62,844 support level, located 18,536 points below the current 81,380 price.\n\n**RISK**\nThe single biggest risk is macro-driven trend failure back toward the 200WMA at 65,410, confirmed if price loses structural support at 62,844.",
+  "audit": "- \"impacting open interest at the current 81,365 resistance level\": The context states resistance is at 81,365 (8.137e+04), but contains no data regarding \"impacting open interest\"."
  },
  "ETH": {
-  "price": 2648.11,
-  "ratio": 1.055,
+  "price": 2641.08,
+  "ratio": 1.052,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved -96.8% since last snapshot (2026-09-19)"
+   "Price moved -96.8% since last snapshot (2026-09-20)"
   ],
-  "halving": "2028-11-06",
+  "halving": "2028-06-28",
   "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "The provided ANALYSIS contains no factual or numeric market claims to audit; it is solely an API error message (\"Gemini error 404: ...\"). \n\nUnsupported claims:\n- `_(Gemini error 404: { \"error\": { \"code\": 404, \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_` \u2014 The analysis contains an error payload rather than an analytical interpretation of the context data."
+  "audit": "The ANALYSIS contains no market interpretation or factual claims derived from the CONTEXT; it consists entirely of a system error message:\n\n* \"Gemini error 404: { 'error': { 'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_\" \u2014 Not supported by context (system API error)."
  }
 }
