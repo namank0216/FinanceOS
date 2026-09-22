@@ -1,27 +1,27 @@
 {
  "BTC": {
-  "price": 85922.0,
-  "ratio": 1.313,
+  "price": 86590.0,
+  "ratio": 1.322,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved +3153.3% since last snapshot (2026-09-20)",
+   "Price moved +3052.0% since last snapshot (2026-09-21)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-04-29",
-  "analysis": "**CYCLE READ**\nBTC sits at 85,920 against a 54,620 realized price, keeping MVRV neutral at 1.57 (well below the 2.0 adaptive threshold where historical 1-year returns drop to a median +60% across 63 episodes). Price trades 1.31x above the 200WMA of 65,460 within an active 330-430 day trough window (currently day 350 post-ATH), but structure remains BULL (HH+HL) with a 74% baseline 1-year positive rate.\n\n**CATALYSTS (next 14 days, dated)**\n- 2026-09-25 (+4d): Quarterly derivatives expiry arrives with funding at a neutral 0.0032%/8h and Fear & Greed elevated at 70.\n\n**RULE STATUS**\nClosest to triggering is the user's upper structural resistance band at 85,922 (matching current price of 85,920 within $2), whereas the scale-out rule requires MVRV > 3.0 (currently 1.57) and the accumulation floor rests at the 200WMA of 65,460.\n\n**RISK**\nThe single biggest risk is a cyclical breakdown below support at 62,844, confirmed if price falls below the 200WMA at 65,460 (where 0.85x and 0.66x downside bands sit at 55,641 and 43,204, respectively).",
-  "audit": "_(Provider gemini unavailable: HTTPSConnectionPool(host='generativelanguage.googleapis.com', port=443): Read timed out. (read timeout=45))_"
+  "halving": "2028-04-19",
+  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
+  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
  },
  "ETH": {
-  "price": 2747.11,
-  "ratio": 1.094,
+  "price": 2757.14,
+  "ratio": 1.097,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved -96.8% since last snapshot (2026-09-21)"
+   "Price moved -96.8% since last snapshot (2026-09-22)"
   ],
-  "halving": "2028-04-29",
-  "analysis": "**CYCLE READ**\nETH sits at $2,747 (1.09x above the 200WMA of $2,511) inside the historical 330\u2013430d trough window at day 395 post-ATH, matching a 65% baseline 1-year positive rate (+54% median). MVRV stands neutral at 1.26 versus the 2,184 realized price, remaining below the 79% win-rate accumulation threshold of MVRV < 1.0 (36 episodes).\n\n**CATALYSTS (next 14 days, dated)**\nQuarterly options expiry lands on 2026-09-25 (+4d) against immediate overhead resistance at $2,748. The 500-day pre-halving buy date approaches on 2026-12-16 in 85 days.\n\n**RULE STATUS**\nThe closest trigger to firing is the accumulation band at the 200WMA of $2,511, sitting just 8.6% below the current $2,747 price (historically 98% positive over 1 year across 24 episodes). Exit rules remain dormant with MVRV at 1.26 versus the >3.0 (or adaptive 2.0) scale-out trigger.\n\n**RISK**\nThe primary risk is structural failure below key support at $2,391, which would invalidate the current higher-high/higher-low bull structure across the 20-day range ($2,391\u2013$2,748). A daily close confirming this break exposes the 0.85x 200WMA band down at $2,134.",
-  "audit": "_(Provider gemini unavailable: HTTPSConnectionPool(host='generativelanguage.googleapis.com', port=443): Read timed out. (read timeout=45))_"
+  "halving": "2028-04-19",
+  "analysis": "_(Provider gemini unavailable: HTTPSConnectionPool(host='generativelanguage.googleapis.com', port=443): Read timed out. (read timeout=45))_",
+  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
  }
 }
