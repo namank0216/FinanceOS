@@ -1,26 +1,26 @@
 {
  "BTC": {
-  "price": 84294.0,
-  "ratio": 1.286,
+  "price": 84179.0,
+  "ratio": 1.283,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved +2957.3% since last snapshot (2026-09-22)",
+   "Price moved +3055.1% since last snapshot (2026-09-23)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-05-01",
-  "analysis": "**CYCLE READ**\nBTC sits at 84,290 inside its 330\u2013430 day trough window (day 352 post-124,824 ATH) with an MVRV of 1.54, aligning with a historical baseline where holding has a 74% positive 1-year rate (median +101%).\n\n**CATALYSTS (next 14 days, dated)**\nQuarterly derivatives expiry lands on 2026-09-25 (+2d) as price tests its 86,600 resistance level.\n\n**RULE STATUS**\nClosest trigger is the resistance breakout at 86,597 (current price 84,290, just 2.7% away), while the user's MVRV > 3 scale-out rule remains distant versus the current 1.54 reading.\n\n**RISK**\nSingle biggest risk is macro yield contagion with the 10-year Treasury breaking 5.10%, which would confirm cycle invalidation if BTC breaks below key structural support at 62,844.",
+  "halving": "2028-05-07",
+  "analysis": "_(Provider gemini unavailable: HTTPSConnectionPool(host='generativelanguage.googleapis.com', port=443): Read timed out. (read timeout=45))_",
   "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
  },
  "ETH": {
-  "price": 2668.0,
-  "ratio": 1.062,
+  "price": 2671.62,
+  "ratio": 1.063,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved -96.8% since last snapshot (2026-09-23)"
+   "Price moved -96.8% since last snapshot (2026-09-24)"
   ],
-  "halving": "2028-05-01",
+  "halving": "2028-05-07",
   "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
   "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
  }
