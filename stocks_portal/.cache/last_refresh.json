@@ -1,27 +1,27 @@
 {
  "BTC": {
-  "price": 84179.0,
-  "ratio": 1.283,
+  "price": 83711.0,
+  "ratio": 1.275,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved +3055.1% since last snapshot (2026-09-23)",
+   "Price moved +3033.3% since last snapshot (2026-09-24)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
   "halving": "2028-05-07",
-  "analysis": "_(Provider gemini unavailable: HTTPSConnectionPool(host='generativelanguage.googleapis.com', port=443): Read timed out. (read timeout=45))_",
-  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
+  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features a)_",
+  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features a)_"
  },
  "ETH": {
-  "price": 2671.62,
-  "ratio": 1.063,
+  "price": 2681.93,
+  "ratio": 1.066,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved -96.8% since last snapshot (2026-09-24)"
+   "Price moved -96.8% since last snapshot (2026-09-25)"
   ],
   "halving": "2028-05-07",
-  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_",
-  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-flash for the latest features a)_"
+  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features a)_",
+  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features a)_"
  }
 }
