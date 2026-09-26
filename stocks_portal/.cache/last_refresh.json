@@ -1,27 +1,27 @@
 {
  "BTC": {
-  "price": 83711.0,
-  "ratio": 1.275,
+  "price": 84093.0,
+  "ratio": 1.28,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved +3033.3% since last snapshot (2026-09-24)",
+   "Price moved +3035.5% since last snapshot (2026-09-25)",
    "NEW ALL-TIME HIGH \u2014 post-peak clock reset"
   ],
-  "halving": "2028-05-07",
+  "halving": "2028-04-29",
   "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features a)_",
-  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features a)_"
+  "audit": "The entire ANALYSIS contains no factual or numerical market claims from the context, as it consists solely of an API error message:\n\n* `\"(Gemini error 404: {\\n  \\\"error\\\": {\\n    \\\"code\\\": 404,\\n    \\\"message\\\": \\\"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features a)\"` \u2014 Not supported by context."
  },
  "ETH": {
-  "price": 2681.93,
-  "ratio": 1.066,
+  "price": 2689.53,
+  "ratio": 1.069,
   "buy": 1,
   "sell": 0,
   "changes": [
-   "Price moved -96.8% since last snapshot (2026-09-25)"
+   "Price moved -96.8% since last snapshot (2026-09-26)"
   ],
-  "halving": "2028-05-07",
-  "analysis": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features a)_",
-  "audit": "_(Gemini error 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features a)_"
+  "halving": "2028-04-29",
+  "analysis": "**CYCLE READ**\nETH sits at 2,690, holding 1.07x above its 2,517 200WMA within a 330-430d bottom window (day 400 post-ATH) where baseline 1-year forward returns show a 65% positive win rate (median +54%).\n\n**CATALYSTS (next 14 days, dated)**\nSEC Commissioner Hester Peirce departs her post on 2026-10-02 (in 6 days), while the next major macro print arrives with CPI release on 2026-10-14, which falls 4 days beyond the 14-day window.\n\n**RULE STATUS**\nThe closest rule trigger is the bullish breakout above 2,775 resistance, sitting just 3.16% above the current 2,690 price within the active 2,397-2,775 range.\n\n**RISK**\nThe single biggest risk is a trend breakdown below 2,397 support toward realized price at 2,184, confirmed if price falls below the 200WMA at 2,517 (a condition historically yielding 98% positive 1y returns across 24 episodes).",
+  "audit": "AUDIT PASS \u2014 all claims traceable to context."
  }
 }
